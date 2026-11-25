@@ -9,14 +9,14 @@ import contextlib
 import copy
 import importlib.util
 import io
+import pathlib
 import subprocess
 import sys
 import unittest
-from pathlib import Path
-from unittest import mock
+import unittest.mock
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCHEMA_SYNC_PATH = REPO_ROOT / "tools" / "validate" / "schema_sync.py"
 
 _spec = importlib.util.spec_from_file_location("schema_sync_under_test", SCHEMA_SYNC_PATH)
@@ -42,8 +42,8 @@ def run_main_with_schema(schema: dict) -> tuple[int, str, str]:
     validator = schema_sync.load_validator()
     stdout, stderr = io.StringIO(), io.StringIO()
     with (
-        mock.patch.object(schema_sync, "load_schema", return_value=schema),
-        mock.patch.object(schema_sync, "load_validator", return_value=validator),
+        unittest.mock.patch.object(schema_sync, "load_schema", return_value=schema),
+        unittest.mock.patch.object(schema_sync, "load_validator", return_value=validator),
         contextlib.redirect_stdout(stdout),
         contextlib.redirect_stderr(stderr),
     ):
