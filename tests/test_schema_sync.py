@@ -15,7 +15,6 @@ import sys
 import unittest
 import unittest.mock
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCHEMA_SYNC_PATH = REPO_ROOT / "tools" / "validate" / "schema_sync.py"
 
