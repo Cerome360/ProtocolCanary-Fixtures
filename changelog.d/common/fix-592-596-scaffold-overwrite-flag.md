@@ -1,0 +1,2 @@
+- Add `--force` to `tools/scaffold/new_fixture.py` so an existing skeleton can be replaced deliberately; the default still refuses to overwrite, and a symlink is never replaced even with `--force` (#596).
+- Cover the overwrite guard, duplicate glossary terms (#592), unexpected schema properties (#594), and Protocol 29 archive determinism (#604) with regression tests.

@@ -6,7 +6,7 @@ explicit placeholders for missing values. Untouched skeletons intentionally
 fail validation until placeholders are replaced with real, verified evidence.
 
 Usage:
-    python3 tools/scaffold/new_fixture.py --surface {xdr,rpc,soroban} --protocol N --id ID --category CAT [--output-dir DIR]
+    python3 tools/scaffold/new_fixture.py --surface {xdr,rpc,soroban} --protocol N --id ID --category CAT [--output-dir DIR] [--force]
 """
 from __future__ import annotations
 
@@ -188,6 +188,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=str(REPO_ROOT),
         help="base output directory (default: repository root)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing fixture file (a symlink is still refused)",
+    )
     return parser.parse_args(argv)
 
 
@@ -224,6 +229,16 @@ def main(argv: list[str]) -> int:
     if not target_file.resolve().is_relative_to(pack_dir):
         print(f"error: {target_file} is outside {pack_dir}", file=sys.stderr)
         return 1
+    # A symlink is refused even with --force: opening it for writing could
+    # replace a file outside the pack, and that no-overwrite contract is not
+    # negotiable.
+    if target_file.is_symlink():
+        print(f"error: refusing to replace symlink: {target_file}", file=sys.stderr)
+        return 1
+    if target_file.exists() and not args.force:
+        print(f"error: file already exists: {target_file}", file=sys.stderr)
+        return 1
+
     content = render_skeleton(args.surface, args.protocol, args.id, args.category)
     created_dirs: list[Path] = []
     missing: list[Path] = []
@@ -249,7 +264,9 @@ def main(argv: list[str]) -> int:
         # opening, preserving the no-overwrite and no-outside-write contract.
         if target_file.is_symlink():
             raise FileExistsError(target_file)
-        handle = target_file.open("x", encoding="utf-8", newline="\n")
+        handle = target_file.open(
+            "w" if args.force else "x", encoding="utf-8", newline="\n"
+        )
         created_file = True
         with handle:
             handle.write(content)

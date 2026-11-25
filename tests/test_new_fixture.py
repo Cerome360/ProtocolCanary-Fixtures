@@ -196,6 +196,100 @@ class NewFixtureTests(unittest.TestCase):
         self.assertEqual(report.errors, [])
 
 
+class OverwriteGuardTests(unittest.TestCase):
+    """Issue #596: an existing fixture file is never silently replaced."""
+
+    def setUp(self) -> None:
+        # Resolved, because Windows returns a short (8.3) temporary path such
+        # as RUNNER~1 while the tool resolves the target before comparing it
+        # with the pack directory; an unresolved root would mismatch and trip
+        # the outside-pack guard before the guard under test.
+        self.temp_dir = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.temp_dir, ignore_errors=True)
+
+    def run_tool(self, surface: str, fixture_id: str, *extra: str) -> tuple[int, str, str]:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        argv = [
+            "--surface", surface,
+            "--protocol", "28",
+            "--id", fixture_id,
+            "--category", "ledger",
+            "--output-dir", str(self.temp_dir),
+            *extra,
+        ]
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = new_fixture.main(argv)
+        return exit_code, stdout.getvalue(), stderr.getvalue()
+
+    def files(self) -> list[Path]:
+        return sorted(
+            path.relative_to(self.temp_dir)
+            for path in self.temp_dir.rglob("*")
+            if path.is_file()
+        )
+
+    def test_collision_fails_without_altering_the_original_file(self) -> None:
+        exit_code, _out, err = self.run_tool("rpc", "p28-rpc-collision")
+        self.assertEqual(exit_code, 0, err)
+        target = self.temp_dir / "protocol-28" / "rpc" / "p28-rpc-collision.toml"
+        original = target.read_bytes()
+        original_mtime = target.stat().st_mtime_ns
+
+        exit_code, _out, err = self.run_tool("rpc", "p28-rpc-collision")
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("file already exists", err)
+        self.assertIn("p28-rpc-collision.toml", err)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(target.stat().st_mtime_ns, original_mtime)
+        self.assertEqual(self.files(), [Path("protocol-28/rpc/p28-rpc-collision.toml")])
+
+    def test_collision_with_a_hand_written_file_leaves_its_content_alone(self) -> None:
+        target = self.temp_dir / "protocol-28" / "soroban" / "p28-soroban-existing.toml"
+        target.parent.mkdir(parents=True)
+        sentinel = b'id = "p28-soroban-existing"\n# hand-written, keep me\n'
+        target.write_bytes(sentinel)
+
+        exit_code, _out, err = self.run_tool("soroban", "p28-soroban-existing")
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("file already exists", err)
+        self.assertEqual(target.read_bytes(), sentinel)
+        self.assertEqual(self.files(), [Path("protocol-28/soroban/p28-soroban-existing.toml")])
+
+    def test_force_flag_permits_overwriting_an_existing_file(self) -> None:
+        target = self.temp_dir / "protocol-28" / "rpc" / "p28-rpc-forced.toml"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b'id = "sentinel"\n')
+
+        exit_code, _out, err = self.run_tool("rpc", "p28-rpc-forced", "--force")
+
+        self.assertEqual(exit_code, 0, err)
+        replaced = target.read_text(encoding="utf-8")
+        self.assertNotIn("sentinel", replaced)
+        self.assertIn('id = "p28-rpc-forced"', replaced)
+        self.assertIn("# TODO:", replaced)
+        self.assertEqual(self.files(), [Path("protocol-28/rpc/p28-rpc-forced.toml")])
+
+    def test_force_flag_is_refused_for_a_symlink_and_writes_no_target(self) -> None:
+        # The link points inside the pack, so it gets past the outside-pack
+        # guard and exercises the symlink refusal itself.
+        link_target = self.temp_dir / "protocol-28" / "rpc" / "inside-target.toml"
+        link = self.temp_dir / "protocol-28" / "rpc" / "p28-rpc-forced-link.toml"
+        link.parent.mkdir(parents=True)
+        try:
+            link.symlink_to(link_target)
+        except (NotImplementedError, OSError):
+            self.skipTest("symbolic links are unavailable")
+
+        exit_code, _out, err = self.run_tool("rpc", "p28-rpc-forced-link", "--force")
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("symlink", err)
+        self.assertTrue(link.is_symlink())
+        self.assertFalse(link_target.exists())
+
+
 def parse_skeleton(text: str) -> dict[str, dict[str, str]]:
     """Parse a skeleton as text: table name -> {key: raw value}.
 

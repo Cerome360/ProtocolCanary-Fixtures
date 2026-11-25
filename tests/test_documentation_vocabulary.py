@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -43,7 +44,16 @@ def markdown_rows(path: Path, anchor: str, columns: int) -> list[list[str]]:
     if next_heading:
         body = body[: next_heading.start()]
     rows = []
+    fenced = False
     for line in body.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("```", "~~~")):
+            # Fenced examples may document a table shape, or show a vocabulary
+            # value the validator rejects. Neither is a row of the real table.
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
         if line.startswith("|") and not re.fullmatch(r"[|\s:-]+", line):
             # Split on unescaped pipes only: CONTRIBUTING.md separates
             # vocabulary values inside one cell with a literal `\|`.
@@ -95,6 +105,83 @@ class TestDocumentationMatchesVocabulary(unittest.TestCase):
         # fixture can use, and would silently widen the table's keys.
         surfaces = {surface for surface, _field in readme_vocabulary()}
         self.assertEqual(surfaces, validate.SURFACES)
+
+
+class TestVocabularyParserSkipsCode(unittest.TestCase):
+    """Only prose belongs to the vocabulary tables; code samples never do.
+
+    A fenced block can legitimately contain a table-shaped line, and inline
+    backticks are how the prose spells a vocabulary value. Neither may add a
+    surface, a field or a value that the validator does not accept, and neither
+    may hide a real prose violation.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "doc.md"
+
+    def write(self, body: str) -> None:
+        self.path.write_text("### Assertion vocabulary\n\n" + body, encoding="utf-8")
+
+    def test_rows_inside_fenced_blocks_are_ignored(self) -> None:
+        self.write(
+            "| surface | field | value | assertion |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `rpc` | `[[assert]].kind` | `field-absent` | flagged in prose |\n"
+            "\n"
+            "```toml\n"
+            "| rpc | [[assert]].kind | retired-kind | not part of the table |\n"
+            "```\n"
+            "\n"
+            "~~~text\n"
+            "| rpc | [[assert]].kind | also-retired | still not a row |\n"
+            "~~~\n"
+            "\n"
+            "| `rpc` | `[[assert]].kind` | `field-present` | flagged in prose |\n"
+        )
+        rows = markdown_rows(self.path, "### Assertion vocabulary", 4)
+        self.assertEqual(
+            [(row[0], row[2]) for row in rows],
+            [("`rpc`", "`field-absent`"), ("`rpc`", "`field-present`")],
+        )
+
+    def test_backticked_terms_are_reported_without_backticks(self) -> None:
+        self.write(
+            "| surface | field | value | assertion |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `rpc` | `[[assert]].kind` | `field-absent` | prose only |\n"
+        )
+        row = markdown_rows(self.path, "### Assertion vocabulary", 4)[0]
+        self.assertEqual(row[0].strip("`"), "rpc")
+        self.assertEqual(row[1].strip("`"), "[[assert]].kind")
+        self.assertEqual(row[2].strip("`"), "field-absent")
+
+    def test_escaped_pipe_stays_inside_its_cell(self) -> None:
+        self.write(
+            '| surface | fields |\n'
+            '| --- | --- |\n'
+            '| `rpc` | "get-ledger" \\| "get-network" |\n'
+        )
+        row = markdown_rows(self.path, "### Assertion vocabulary", 2)[0]
+        self.assertEqual(row[1], '"get-ledger" \\| "get-network"')
+        self.assertEqual(
+            re.findall(r'"([a-z0-9][a-z0-9-]*)"', row[1]),
+            ["get-ledger", "get-network"],
+        )
+
+    def test_prose_violation_after_a_fence_is_still_parsed(self) -> None:
+        self.write(
+            "```bash\n"
+            "python3 tools/validate/validate.py\n"
+            "```\n"
+            "\n"
+            "| surface | field | value | assertion |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `rpc` | `[[assert]].kind` | `not-a-real-kind` | bad prose value |\n"
+        )
+        rows = markdown_rows(self.path, "### Assertion vocabulary", 4)
+        self.assertEqual([row[2].strip("`") for row in rows], ["not-a-real-kind"])
 
 
 if __name__ == "__main__":

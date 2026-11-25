@@ -294,5 +294,87 @@ class ReleaseRefValidationTests(unittest.TestCase):
             )
 
 
+class MissingPackDirectoryTests(unittest.TestCase):
+    """A protocol with no pack on disk must never be selected silently.
+
+    ``select_pack.py`` chooses a pack from the release tag or dispatch inputs
+    and never touches the filesystem, so the only place a missing protocol can
+    be caught is the selection itself. These tests pin both halves of that
+    contract: an unsupported protocol is rejected with an actionable message
+    naming the packs that exist, and every pack the selector can return is a
+    real directory holding at least one JSON fixture.
+    """
+
+    def test_unsupported_protocol_is_rejected_with_the_supported_packs(self) -> None:
+        # 27 has no pack directory, 31 never shipped, and the blank/None values
+        # a workflow input can carry must not fall through to a default pack.
+        for protocol in ("27", "31", "", "3 0", "28\n"):
+            with self.subTest(protocol=protocol):
+                with self.assertRaises(selector.SelectionError) as raised:
+                    selector.select(
+                        event="workflow_dispatch",
+                        protocol=protocol,
+                        version="1.0.0",
+                    )
+                self.assertIn(
+                    "manual dispatch protocol must be 28, 29 or 30",
+                    str(raised.exception),
+                )
+
+    def test_unsupported_protocol_exits_nonzero_with_a_clear_diagnostic(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SELECTOR_SCRIPT),
+                "--event",
+                "workflow_dispatch",
+                "--protocol",
+                "31",
+                "--version",
+                "1.0.0",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("error:", result.stderr)
+        self.assertIn("protocol must be 28, 29 or 30", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_every_selectable_pack_is_a_directory_with_json_fixtures(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        for protocol in ("28", "29", "30"):
+            with self.subTest(protocol=protocol):
+                selected = selector.select(
+                    event="workflow_dispatch",
+                    protocol=protocol,
+                    version="1.0.0",
+                )
+                pack = repository / selected["pack"]
+                self.assertTrue(
+                    pack.is_dir(),
+                    f"selector returned {selected['pack']!r} but {pack} is not a directory",
+                )
+                fixtures = sorted(pack.rglob("*.json"))
+                self.assertTrue(
+                    fixtures,
+                    f"{pack} contains no JSON fixture files; an empty pack directory "
+                    "would publish a release with nothing in it",
+                )
+
+    def test_protocol_27_pack_stays_unselectable_despite_its_directory(self) -> None:
+        # Directory presence is not the selector's signal: protocol-27 ships in
+        # the repository but has no release support, so it must stay refused,
+        # while protocol-31 has neither a directory nor a selection path.
+        repository = Path(__file__).resolve().parents[1]
+        self.assertTrue((repository / "protocol-27").is_dir())
+        self.assertFalse((repository / "protocol-31").is_dir())
+
+        with self.assertRaises(selector.SelectionError):
+            selector.select(event="workflow_dispatch", protocol="27", version="1.0.0")
+        with self.assertRaises(selector.SelectionError):
+            selector.select(event="push", tag="fixtures-p27-v1.0.0")
+
+
 if __name__ == "__main__":
     unittest.main()

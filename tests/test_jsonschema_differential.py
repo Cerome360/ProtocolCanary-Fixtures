@@ -787,6 +787,29 @@ EDGE_CASES: tuple[EdgeCase, ...] = (
         False,
     ),
     EdgeCase(
+        "registry-v1",
+        {
+            "registryVersion": 1,
+            "protocol": 28,
+            "fixtures": [
+                {
+                    "id": "p28-xdr-a",
+                    "path": "xdr/a.toml",
+                    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "surface": "xdr",
+                    "category": "cap-0083",
+                    "description": "a fixture",
+                    "payloads": [],
+                    "unexpectedFixtureField": "unknown",
+                }
+            ],
+            "packDigest": "sha256:" + "0" * 64,
+        },
+        "additionalProperties: an unknown property inside a fixture is refused by both",
+        False,
+        False,
+    ),
+    EdgeCase(
         "simulation-resource-estimate",
         {"kind": "simulation-resource-estimate"},
         "a proposed expect block with only its kind is accepted by both",
@@ -1277,6 +1300,102 @@ class DifferentialInfrastructureTests(unittest.TestCase):
                         r"uses:\s+[\w.-]+/[\w.-]+@[0-9a-f]{40}",
                         "every action must be pinned to a commit SHA",
                     )
+
+
+class AdditionalPropertiesTests(unittest.TestCase):
+    """Issue #594: unexpected additional properties are rejected, by name.
+
+    ``registry-v1.schema.json`` closes both the registry root and each fixture
+    object (and each payload object) with ``additionalProperties: false``, as
+    Draft 2020-12 defines. A fixture that grows an unrecognised property must
+    be refused, and the validator's error must name the offending property so
+    the fixture author knows what to remove.
+    """
+
+    @staticmethod
+    def schema() -> dict:
+        return json.loads(
+            IN_SCOPE_SCHEMAS["registry-v1"].read_text(encoding="utf-8")
+        )
+
+    @staticmethod
+    def registry(fixture_extra: dict | None = None, payload_extra: dict | None = None) -> dict:
+        payload = {
+            "path": "xdr/a.bin",
+            "sha256": "0" * 64,
+        }
+        payload.update(payload_extra or {})
+        fixture = {
+            "id": "p28-xdr-a",
+            "path": "xdr/a.toml",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "surface": "xdr",
+            "category": "cap-0083",
+            "description": "a fixture",
+            "payloads": [payload],
+        }
+        fixture.update(fixture_extra or {})
+        return {
+            "registryVersion": 1,
+            "protocol": 28,
+            "fixtures": [fixture],
+            "packDigest": "sha256:" + "0" * 64,
+        }
+
+    def test_lite_rejects_an_unexpected_fixture_property_and_names_it(self) -> None:
+        document = self.registry({"unexpectedFixtureField": "unknown"})
+        errors = LITE.validate(document, self.schema())
+        self.assertTrue(errors, "an unknown fixture property must be refused")
+        message = " ".join(errors)
+        self.assertIn("unexpected property", message)
+        self.assertIn("unexpectedFixtureField", message)
+        self.assertTrue(
+            any("fixtures[0]" in error for error in errors),
+            f"the error must locate the fixture: {errors}",
+        )
+
+    def test_lite_rejects_an_unexpected_payload_property_and_names_it(self) -> None:
+        document = self.registry(payload_extra={"unexpectedPayloadField": 1})
+        errors = LITE.validate(document, self.schema())
+        self.assertTrue(errors)
+        message = " ".join(errors)
+        self.assertIn("unexpected property", message)
+        self.assertIn("unexpectedPayloadField", message)
+        self.assertTrue(any("payloads[0]" in error for error in errors))
+
+    def test_lite_rejects_an_unexpected_root_property_and_names_it(self) -> None:
+        document = self.registry()
+        document["unexpectedRootField"] = True
+        errors = LITE.validate(document, self.schema())
+        self.assertTrue(errors)
+        self.assertIn("unexpected property", " ".join(errors))
+        self.assertIn("unexpectedRootField", " ".join(errors))
+
+    def test_a_valid_fixture_object_still_passes(self) -> None:
+        self.assertEqual(LITE.validate(self.registry(), self.schema()), [])
+
+
+class AdditionalPropertiesDifferentialTests(DifferentialTestCase):
+    """The two implementations agree on additionalProperties in fixtures."""
+
+    def test_both_validators_reject_an_unexpected_fixture_property(self) -> None:
+        schema = json.loads(IN_SCOPE_SCHEMAS["registry-v1"].read_text(encoding="utf-8"))
+        document = AdditionalPropertiesTests.registry(
+            {"unexpectedFixtureField": "unknown"}
+        )
+        lite_result = lite_verdict(LITE, document, schema)
+        reference_result = reference_verdict(document, schema)
+        self.assertFalse(lite_result.valid)
+        self.assertFalse(reference_result.valid)
+        self.assertIn("unexpectedFixtureField", " ".join(lite_result.errors))
+        self.assertIn("unexpectedFixtureField", " ".join(reference_result.errors))
+        self.assertEqual(lite_result.pointers, reference_result.pointers)
+
+    def test_both_validators_accept_the_same_valid_fixture_object(self) -> None:
+        schema = json.loads(IN_SCOPE_SCHEMAS["registry-v1"].read_text(encoding="utf-8"))
+        document = AdditionalPropertiesTests.registry()
+        self.assertTrue(lite_verdict(LITE, document, schema).valid)
+        self.assertTrue(reference_verdict(document, schema).valid)
 
 
 if __name__ == "__main__":

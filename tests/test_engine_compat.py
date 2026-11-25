@@ -142,5 +142,79 @@ class EngineCompatibilityTests(unittest.TestCase):
         self.assertIn("engine rejected fixture", message)
 
 
+class MissingEngineBinaryTests(unittest.TestCase):
+    """An engine that cannot be launched must fail loudly, naming the path.
+
+    ``test_engine_compat.py`` has no wrapper module of its own: the pinned-engine
+    test simply runs the configured binary through ``run_checked``. That means
+    the failure mode for a missing or non-executable engine is whatever
+    ``subprocess`` raises, so these tests pin that a missing engine surfaces as
+    ``FileNotFoundError`` with ``errno`` 2 instead of degrading into an opaque
+    exit code, and that the diagnostic names the unresolved executable.
+
+    Where the path is named depends on the platform: POSIX ``exec`` attaches it
+    to ``FileNotFoundError.filename`` (and therefore to ``str(error)``), while
+    Windows raises ``[WinError 2] The system cannot find the file specified``
+    with no path attached. On Windows the path is named by the module's own
+    ``is_file()`` / ``os.access`` guard in the pinned-engine test, so these
+    tests assert the attached path only where the platform provides it.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="canary-missing-engine-")
+        self.addCleanup(self.temp.cleanup)
+        self.work = Path(self.temp.name)
+
+    def assert_names_path(self, error: FileNotFoundError, path: str) -> None:
+        """Assert the diagnostic names ``path`` where the platform attaches it."""
+        if os.name == "posix":
+            self.assertEqual(error.filename, path)
+            self.assertIn(path, str(error))
+        else:
+            # WinError 2 carries no filename; the pinned-engine guard, which
+            # formats the configured path into its own message, covers naming.
+            self.assertIsNone(error.filename)
+            self.assertEqual(getattr(error, "winerror", None), 2)
+
+    def test_missing_engine_binary_raises_filenotfound_with_its_path(self) -> None:
+        missing = self.work / "does-not-exist" / "stellar-canary"
+        with self.assertRaises(FileNotFoundError) as raised:
+            run_checked([str(missing), "--version"])
+
+        error = raised.exception
+        self.assertEqual(error.errno, 2)
+        self.assert_names_path(error, str(missing))
+
+    def test_missing_engine_binary_is_reported_before_archive_work(self) -> None:
+        # The pinned-engine test resolves the executable first: a missing path
+        # fails without packing or unpacking an archive, so no build output is
+        # left behind for the diagnostic to be buried under.
+        engine = self.work / "absent-engine"
+        with self.assertRaises(FileNotFoundError) as raised:
+            run_checked([str(engine), "check", "--fixtures-dir", str(self.work)])
+        self.assertEqual(raised.exception.errno, 2)
+        self.assert_names_path(raised.exception, str(engine))
+        self.assertEqual(list(self.work.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "executable bit is a POSIX concept")
+    def test_non_executable_engine_binary_raises_permission_error(self) -> None:
+        engine = self.work / "stellar-canary"
+        engine.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        engine.chmod(0o644)
+
+        with self.assertRaises(PermissionError) as raised:
+            run_checked([str(engine), "--version"])
+        self.assertEqual(raised.exception.errno, 13)
+        self.assertIn(str(engine), str(raised.exception))
+
+    def test_pinned_engine_test_is_skipped_rather_than_silently_green(self) -> None:
+        # Without STELLAR_CANARY_BIN (or STELLAR_CANARY_REQUIRED=1) the pinned
+        # integration cannot run; unittest must report it as skipped so a
+        # missing engine is visible instead of looking like a pass.
+        configured = bool(ENGINE_BIN) or os.environ.get("STELLAR_CANARY_REQUIRED") == "1"
+        pinned = EngineCompatibilityTests.test_built_archive_passes_pinned_engine
+        self.assertEqual(getattr(pinned, "__unittest_skip__", False), not configured)
+
+
 if __name__ == "__main__":
     unittest.main()
