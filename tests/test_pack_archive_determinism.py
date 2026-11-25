@@ -81,7 +81,7 @@ def _rpc_toml(fixture_id: str) -> bytes:
         "[[assert]]\n"
         'kind = "field-exists"\n'
         'field = "passphrase"\n'
-    ).encode("utf-8")
+    ).encode()
 
 
 class PackArchiveDeterminismTests(unittest.TestCase):
