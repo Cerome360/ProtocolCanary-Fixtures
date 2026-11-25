@@ -10,13 +10,13 @@ import hashlib
 import importlib.util
 import io
 import json
+import pathlib
 import re
 import tempfile
 import unittest
-from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 RECORD_STRUCTURAL_PATH = REPO_ROOT / "tools" / "evidence" / "record_structural.py"
 
 _spec = importlib.util.spec_from_file_location("record_structural", RECORD_STRUCTURAL_PATH)
@@ -41,7 +41,9 @@ TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 class StructuralRecordTests(unittest.TestCase):
-    def write_fixture(self, pack: Path, contents: str = VALID_FIXTURE) -> Path:
+    def write_fixture(
+        self, pack: pathlib.Path, contents: str = VALID_FIXTURE
+    ) -> pathlib.Path:
         fixture = pack / "xdr" / "p28-xdr-structural-example.toml"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         fixture.write_text(contents, encoding="utf-8")
@@ -49,8 +51,8 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_valid_pack_generates_schema_compliant_record_with_exact_sha256(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            pack = Path(temporary) / "pack"
-            output = Path(temporary) / "records"
+            pack = pathlib.Path(temporary) / "pack"
+            output = pathlib.Path(temporary) / "records"
             fixture = self.write_fixture(pack)
 
             written, checked_at = record_structural.run(
@@ -73,8 +75,8 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_date_only_checked_at_is_rejected_by_evidence_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            pack = Path(temporary) / "pack"
-            output = Path(temporary) / "records"
+            pack = pathlib.Path(temporary) / "pack"
+            output = pathlib.Path(temporary) / "records"
             self.write_fixture(pack)
             written, _ = record_structural.run(pack, output_dir=output, version="test-verifier")
             record = json.loads(written[0].read_text(encoding="utf-8"))
@@ -89,8 +91,8 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_invalid_fixture_prevents_all_record_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            pack = Path(temporary) / "pack"
-            output = Path(temporary) / "records"
+            pack = pathlib.Path(temporary) / "pack"
+            output = pathlib.Path(temporary) / "records"
             self.write_fixture(pack, VALID_FIXTURE.replace('kind = "decode-success"', "kind ="))
 
             with self.assertRaisesRegex(record_structural.RecordError, "does not validate"):
@@ -100,8 +102,8 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_dry_run_calculates_timestamp_without_writing_records(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            pack = Path(temporary) / "pack"
-            output = Path(temporary) / "records"
+            pack = pathlib.Path(temporary) / "pack"
+            output = pathlib.Path(temporary) / "records"
             self.write_fixture(pack)
 
             written, checked_at = record_structural.run(
@@ -117,7 +119,7 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_cli_output_dir_and_verifier_version_control_written_record(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = pathlib.Path(temporary)
             pack = root / "pack"
             output = root / "custom-records"
             self.write_fixture(pack)
@@ -143,7 +145,7 @@ class StructuralRecordTests(unittest.TestCase):
 
     def test_cli_dry_run_does_not_create_output_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = pathlib.Path(temporary)
             pack = root / "pack"
             output = root / "dry-run-records"
             self.write_fixture(pack)
