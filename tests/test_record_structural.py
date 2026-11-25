@@ -15,7 +15,6 @@ import re
 import tempfile
 import unittest
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 RECORD_STRUCTURAL_PATH = REPO_ROOT / "tools" / "evidence" / "record_structural.py"
 
