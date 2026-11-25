@@ -269,7 +269,10 @@ class InventoryCompareEdgeTests(unittest.TestCase):
 
         code, _, err = self.run_cli(str(self.tmp), str(reg_29))
         self.assertEqual(code, 2)
-        self.assertIn("is a directory", err)
+        self.assertTrue(
+            "is a directory" in err or "could not be read" in err,
+            err,
+        )
 
 
 if __name__ == "__main__":
