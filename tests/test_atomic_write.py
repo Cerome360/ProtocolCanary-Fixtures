@@ -422,7 +422,10 @@ class BaselineHashTest(unittest.TestCase):
     (issues #510-#513), and for the operation arms, footprint arms,
     StellarValue closeTime boundaries, and V1 integer boundaries fixtures
     (issues #547, #548, #559, #560), and for the CLAWBACK and
-    SET_TRUST_LINE_FLAGS operation fixtures (issues #551, #552): a content change
+    SET_TRUST_LINE_FLAGS operation fixtures (issues #551, #552), and on
+    2026-11-26 when merging main brought in the #674 fixtures and this branch
+    added the signature-count, time-bounds, fee-bump muxed-source and CAP-0085
+    ExternalRef fixtures (issues #533, #535, #536, #537): a content change
     legitimately moves all four hashes,
     while the property being pinned stays the same -- the atomic write
     reproduces whatever bytes the tools produce.
@@ -438,13 +441,13 @@ class BaselineHashTest(unittest.TestCase):
 
     BASELINE = {
         "protocolcanary-fixtures-1.0.0.tar.gz":
-            "ea3a4d553a9e06b7c6ca542e2dfcebd7e39a8ef6fb3989bcda9070c73c7a0081",
+            "5c9072c983fb21013f88516d0e38502b4852af53617403c9c8bed5654a5af48a",
         "protocolcanary-fixtures-1.0.0.manifest.json":
-            "75174d80ccd156801dac9ecae38b2e44a86d128b18403a758691559315645b5d",
+            "870a29983562cce476f6da261422f7ca610aed4ca61001fac94d0cb6ccd97108",
         "protocolcanary-fixtures-1.0.0.tar.gz.sha256":
-            "46acfe80cfec453fc41ef671b867f879d43363c6862f62641df0fe94eade2d2f",
+            "28b79ee320a7a12d1988b7fce90d29cfa222693e8c15597bf485957e20875d6e",
         "registry-v1.json":
-            "c40a6e597d0bd980a7ac3ab7a23f86ea59e5eafc119100c10aeb2d416719b411",
+            "6d07a718e6b5f4cbe4f4d39a80211c04efc4c89bb0e9e32708057186c4509323",
     }
 
     def setUp(self) -> None:
