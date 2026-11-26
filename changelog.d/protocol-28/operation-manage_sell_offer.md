@@ -1,0 +1,1 @@
+- Add a Protocol 28 V1 TransactionEnvelope fixture for the `MANAGE_SELL_OFFER` operation arm at its signed int64, `Price` and `offerID` bounds.

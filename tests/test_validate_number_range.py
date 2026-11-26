@@ -192,6 +192,37 @@ min = 1
 """,
                 "assert[0] missing required non-empty 'field'",
             ),
+            # boolean lower bound: min = true
+            (
+                """
+[[assert]]
+kind = "field-number-range"
+field = "protocolVersion"
+min = true
+""",
+                "assert[0].min must be a number",
+            ),
+            # boolean lower bound: min = false
+            (
+                """
+[[assert]]
+kind = "field-number-range"
+field = "protocolVersion"
+min = false
+""",
+                "assert[0].min must be a number",
+            ),
+            # negative ordering mismatch: min = -1, max = -10
+            (
+                """
+[[assert]]
+kind = "field-number-range"
+field = "protocolVersion"
+min = -1
+max = -10
+""",
+                "assert[0] min -1 greater than max -10",
+            ),
         ]
 
         for block, expected_error in negative_cases:

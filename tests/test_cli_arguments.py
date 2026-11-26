@@ -16,6 +16,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_SYNC_PATH = REPO_ROOT / "tools" / "validate" / "schema_sync.py"
+CHECK_ROOT_FILES_PATH = REPO_ROOT / "tools" / "validate" / "check_root_files.py"
+CHECK_SOURCE_LINKS_PATH = REPO_ROOT / "tools" / "validate" / "check_source_links.py"
 
 
 class SchemaSyncArgumentTests(unittest.TestCase):
@@ -53,6 +55,58 @@ class SchemaSyncArgumentTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("usage:", result.stderr)
                 self.assertEqual(result.stdout, "")
+
+
+class CheckRootFilesArgumentTests(unittest.TestCase):
+    def run_cli(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(CHECK_ROOT_FILES_PATH), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=REPO_ROOT,
+        )
+
+    def test_help_exits_0_with_usage_on_stdout(self) -> None:
+        for flag in ("--help", "-h"):
+            with self.subTest(flag=flag):
+                result = self.run_cli(flag)
+                self.assertEqual(result.returncode, 0)
+                self.assertIn("usage:", result.stdout)
+                self.assertIn("check_root_files.py", result.stdout)
+                self.assertEqual(result.stderr, "")
+
+    def test_unknown_argument_exits_2_with_usage_on_stderr(self) -> None:
+        result = self.run_cli("--unknown")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+
+class CheckSourceLinksArgumentTests(unittest.TestCase):
+    def run_cli(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(CHECK_SOURCE_LINKS_PATH), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=REPO_ROOT,
+        )
+
+    def test_help_exits_0_with_usage_on_stdout(self) -> None:
+        for flag in ("--help", "-h"):
+            with self.subTest(flag=flag):
+                result = self.run_cli(flag)
+                self.assertEqual(result.returncode, 0)
+                self.assertIn("usage:", result.stdout)
+                self.assertIn("check_source_links.py", result.stdout)
+                self.assertEqual(result.stderr, "")
+
+    def test_unknown_argument_exits_2_with_usage_on_stderr(self) -> None:
+        result = self.run_cli("--unknown")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
+        self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

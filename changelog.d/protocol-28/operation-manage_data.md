@@ -1,0 +1,1 @@
+- Add Protocol 28 TransactionEnvelope fixture exercising MANAGE_DATA with a 64-byte name and present 64-byte value.

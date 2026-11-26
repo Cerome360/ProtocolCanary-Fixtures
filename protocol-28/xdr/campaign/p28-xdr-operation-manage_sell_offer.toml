@@ -1,0 +1,79 @@
+# Protocol 28 / TransactionEnvelope: the MANAGE_SELL_OFFER arm at its signed bounds.
+#
+# What this tests: a typed `TransactionEnvelope::Tx` V1 containing exactly one
+# `OperationBody` arm `MANAGE_SELL_OFFER` (OperationType 3). The operation has an
+# absent source account and the pinned field order `Asset selling`, `Asset
+# buying`, signed int64 `amount`, `Price`, signed int64 `offerID`.
+#
+# Why it matters: the merged independent codecs support this arm and the
+# Protocol 28 `Price` type, but the pack had no envelope fixture that selected
+# the arm. A decoder that mis-read the operation discriminant, one of the two
+# Asset unions, the signed `amount`/`offerID` fields, or the `Price` numerator
+# and denominator could pass every existing envelope fixture.
+#
+# Introduced in: Protocol 0 (the offer operations are part of the original
+# Stellar protocol); the pinned Protocol 28 XDR definition is below.
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". The exact Base64 below is the official typed oracle
+# recorded for the same construction as `sell_boundary` in
+# tests/test_operation_codec_offers.py, whose module header records that it was
+# generated with the official `stellar-xdr` 28.0.1 crate using
+# `WriteXdr::to_xdr_base64(Limits::none())` and decoded back with the official
+# `ReadXdr`. This fixture reuses those exact bytes rather than re-deriving
+# them. The repository's independent Python envelope codec was then run against
+# this file: it decoded the discriminant, fields and payload order below and
+# re-encoded the complete envelope byte-for-byte to the same Base64.
+#
+# Complete typed construction:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0xaa; 32])),
+#           fee: 100,
+#           seq_num: SequenceNumber(1),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::ManageSellOffer(ManageSellOfferOp {
+#                   selling: Asset::Native,
+#                   buying: Asset::CreditAlphanum4(AlphaNum4 {
+#                       asset_code: AssetCode4(*b"BUY!"),
+#                       issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x11; 32]))),
+#                   }),
+#                   amount: i64::MIN,
+#                   price: Price { n: i32::MIN, d: i32::MAX },
+#                   offer_id: i64::MAX,
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![],
+#   }).to_xdr_base64(Limits::none())
+#
+# Pinned Protocol 28 definitions:
+# https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+#   OperationType, ManageSellOfferOp, Operation and TransactionEnvelope.
+# https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-ledger-entries.x
+#   Asset and Price.
+#
+# Determinism:
+# Deterministic typed XDR construction. The keys and issuer are synthetic
+# filler bytes repeated 32 times, the amounts and price are fixed signed
+# boundary values, and no signature is present. These values prove XDR
+# representation only: they do not prove semantic offer validity,
+# authorization, ledger acceptance, or behavior on any network. i32::MIN is
+# not a usable price denominator in a real offer; it is here to pin the
+# signed field widths.
+
+id = "p28-xdr-operation-manage_sell_offer"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with one `MANAGE_SELL_OFFER` operation at the signed int64, Price and offerID bounds round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAACqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgAAAGQAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAFCVVkhAAAAABERERERERERERERERERERERERERERERERERERERERERgAAAAAAAAACAAAAAf////3//////////AAAAAAAAAAA="

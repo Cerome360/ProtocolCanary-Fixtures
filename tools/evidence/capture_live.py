@@ -175,25 +175,38 @@ def utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def git_revision(repo_root: Path) -> str:
-    """The commit this script was read from, or ``unknown``.
-
-    The version of a verifier has to identify the exact code that did the
-    check. A checkout without git (a source archive, a vendored copy) cannot
-    answer that, and says so rather than guessing.
-    """
+def _git_output(repo_root: Path, *args: str) -> str | None:
+    """The stdout of a git command, or ``None`` when it could not be run."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            ["git", "-C", str(repo_root), *args],
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def git_revision(repo_root: Path) -> str:
+    """The clean commit this script was read from, or ``unknown``.
+
+    The version of a verifier has to identify the exact code that did the
+    check. A checkout without git (a source archive, a vendored copy) cannot
+    answer that, and says so rather than guessing. A checkout with
+    uncommitted worktree or index changes cannot answer it either: the code
+    that ran is not the commit alone, so the provenance must not attribute
+    the run to a clean commit (issue #571).
+    """
+    revision = (_git_output(repo_root, "rev-parse", "HEAD") or "").strip()
+    if len(revision) != 40:
         return "unknown"
-    revision = result.stdout.strip()
-    if result.returncode != 0 or len(revision) != 40:
+    status = _git_output(repo_root, "status", "--porcelain")
+    if status is None or status.strip():
         return "unknown"
     return revision
 

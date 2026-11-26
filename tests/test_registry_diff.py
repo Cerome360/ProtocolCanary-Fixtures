@@ -172,6 +172,13 @@ class RegistryValidationTests(unittest.TestCase):
             diff.load_registry(self.tmp / "absent.json")
         self.assertIn("no such file", str(caught.exception))
 
+    def test_a_zero_byte_file_is_refused(self) -> None:
+        path = self.tmp / "empty.json"
+        path.write_bytes(b"")
+        with self.assertRaises(diff.DiffError) as caught:
+            diff.load_registry(path)
+        self.assertIn("not valid JSON", str(caught.exception))
+
     def test_a_file_that_is_not_json_is_refused(self) -> None:
         path = self.tmp / "broken.json"
         path.write_text("{not json", encoding="utf-8")
@@ -281,10 +288,31 @@ class CommandLineTests(unittest.TestCase):
         )
         self.assertIn("No fixture changed", out)
 
-    def test_a_missing_file_exits_two(self) -> None:
+    def test_a_missing_base_file_exits_two(self) -> None:
         code, _, err = self.run_tool(str(self.tmp / "absent.json"), str(self.new_path))
         self.assertEqual(code, 2)
         self.assertIn("no such file", err)
+
+    def test_a_missing_target_file_exits_two(self) -> None:
+        code, _, err = self.run_tool(str(self.old_path), str(self.tmp / "absent.json"))
+        self.assertEqual(code, 2)
+        self.assertIn("no such file", err)
+
+    def test_a_zero_byte_file_exits_two_with_a_syntax_diagnostic(self) -> None:
+        empty = self.tmp / "empty.json"
+        empty.write_bytes(b"")
+        code, out, err = self.run_tool(str(self.old_path), str(empty))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("not valid JSON", err)
+
+    def test_malformed_json_exits_two_with_a_syntax_diagnostic(self) -> None:
+        broken = self.tmp / "broken.json"
+        broken.write_text('{"registryVersion": 1,', encoding="utf-8")
+        code, out, err = self.run_tool(str(self.old_path), str(broken))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("not valid JSON", err)
 
     def test_comparing_different_protocols_is_refused(self) -> None:
         other = write_json(

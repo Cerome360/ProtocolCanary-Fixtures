@@ -213,6 +213,130 @@ class ScValParityTests(unittest.TestCase):
         self.assertEqual(scval_xdr.decode(by_name["map_empty"])[1], [])
 
 
+class LargeIntegerParityTests(unittest.TestCase):
+    """128-bit and 256-bit integers survive JSON and XDR without truncation.
+
+    Python's ``json`` module parses an integer literal into an ``int`` of
+    arbitrary precision, but a latitude-taking conversion (``float``,
+    ``Decimal`` with a small context, ``format`` with a precision) would
+    round these values. Every assertion below compares the exact integer,
+    its decimal string and the decoded value, so a lossy step anywhere in
+    the path is caught rather than hidden by an equality on a rounded float.
+    """
+
+    BOUNDS = {
+        "u128": (0, (1 << 128) - 1),
+        "i128": (-(1 << 127), (1 << 127) - 1),
+        "u256": (0, (1 << 256) - 1),
+        "i256": (-(1 << 255), (1 << 255) - 1),
+    }
+
+    # The discriminant is the first four bytes; the payload is the XDR width
+    # of the corresponding {U,I}{128,256}Parts struct.
+    PAYLOAD_BYTES = {"u128": 16, "i128": 16, "u256": 32, "i256": 32}
+
+    def test_every_large_integer_kind_has_a_golden_vector(self) -> None:
+        kinds = {v["scval"]["type"] for v in load_vectors()}
+        for kind in self.BOUNDS:
+            with self.subTest(kind=kind):
+                self.assertIn(kind, kinds)
+
+    def test_golden_vectors_preserve_exact_decimal_values(self) -> None:
+        for vector in load_vectors():
+            scval = vector["scval"]
+            kind = scval["type"]
+            if kind not in self.BOUNDS:
+                continue
+            with self.subTest(vector=vector["name"]):
+                value = scval["value"]
+                self.assertIsInstance(value, int)
+                self.assertNotIsInstance(value, bool)
+                # A decimal string is exact if and only if it parses back to
+                # the same integer; no float is involved on either side.
+                self.assertEqual(int(str(value)), value)
+                self.assertEqual(int(f"{value:d}"), value)
+                self.assertNotIn("e", str(value).lower())
+
+    def test_boundary_values_roundtrip_exactly(self) -> None:
+        for kind, bounds in self.BOUNDS.items():
+            for value in bounds:
+                with self.subTest(kind=kind, value=value):
+                    encoded = scval_xdr.encode((kind, value))
+                    self.assertEqual(
+                        len(encoded), 4 + self.PAYLOAD_BYTES[kind]
+                    )
+                    self.assertEqual(
+                        int.from_bytes(encoded[:4], "big"),
+                        scval_xdr.KIND_TO_CODE[kind],
+                    )
+                    decoded = scval_xdr.decode(encoded)
+                    self.assertEqual(decoded, (kind, value))
+                    self.assertEqual(str(decoded[1]), str(value))
+                    self.assertEqual(
+                        scval_xdr.encode(scval_xdr.decode(encoded)), encoded
+                    )
+
+    def test_values_survive_json_without_precision_loss(self) -> None:
+        for kind, bounds in self.BOUNDS.items():
+            for value in bounds:
+                with self.subTest(kind=kind, value=value):
+                    scval = (kind, value)
+                    document = scval_xdr.to_json(scval)
+                    self.assertEqual(document, {"type": kind, "value": value})
+                    reparsed = json.loads(json.dumps(document))
+                    self.assertEqual(reparsed["value"], value)
+                    self.assertEqual(
+                        scval_xdr.from_json(reparsed), scval
+                    )
+
+    def test_a_vec_of_large_integers_preserves_every_element(self) -> None:
+        # The vector (array) encoding is where a codec that stored each
+        # element in a fixed-width Python float would first lose precision.
+        items = [
+            {"type": "i128", "value": self.BOUNDS["i128"][0]},
+            {"type": "u128", "value": self.BOUNDS["u128"][1]},
+            {"type": "i256", "value": self.BOUNDS["i256"][0]},
+            {"type": "u256", "value": self.BOUNDS["u256"][1]},
+        ]
+        scval = ("vec", [scval_xdr.from_json(item) for item in items])
+        encoded = scval_xdr.encode(scval)
+        # vec discriminant + present flag + element count, then each element's
+        # own ScVal discriminant and integer payload.
+        self.assertEqual(
+            len(encoded),
+            12
+            + sum(
+                4 + self.PAYLOAD_BYTES[item["type"]] for item in items
+            ),
+        )
+        decoded = scval_xdr.decode(encoded)
+        self.assertEqual(
+            scval_xdr.to_json(decoded),
+            {"type": "vec", "value": items},
+        )
+        self.assertEqual(scval_xdr.encode(decoded), encoded)
+        self.assertEqual(
+            [str(item[1]) for item in decoded[1]],
+            [str(item["value"]) for item in items],
+        )
+
+    def test_large_integer_vectors_match_their_decimal_construction(self) -> None:
+        # Rebuild each golden vector from its decimal string and require the
+        # same bytes: the JSON text and the XDR encoder must agree on the
+        # value represented, not merely on a value that happens to fit.
+        by_name = {v["name"]: v for v in load_vectors()}
+        for name, kind in (
+            ("u128_max", "u128"),
+            ("i128_min", "i128"),
+            ("u256_max", "u256"),
+            ("i256_neg_one", "i256"),
+        ):
+            with self.subTest(vector=name):
+                vector = by_name[name]
+                value = int(str(vector["scval"]["value"]))
+                self.assertEqual(vector_bytes(vector), scval_xdr.encode((kind, value)))
+
+
 class ScValNegativeTests(unittest.TestCase):
     """Malformed input must be rejected, never silently accepted."""
 

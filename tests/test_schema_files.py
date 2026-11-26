@@ -49,6 +49,22 @@ sys.modules["jsonschema_lite_schema_files"] = lite
 _spec.loader.exec_module(lite)
 
 DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+DRAFT_07 = "http://json-schema.org/draft-07/schema#"
+SUPPORTED_DRAFTS = frozenset(
+    {DRAFT_2020_12, DRAFT_07, "https://json-schema.org/draft-07/schema"}
+)
+
+# A schema's $id is its canonical, fetchable identifier. Top-level schemas use
+# the raw.githubusercontent.com path this repository publishes; a proposal
+# under schemas/proposed/ lives at its GitHub blob-independent URL until it is
+# adopted, so its canonical identifier is the repository path instead.
+CANONICAL_ID_ROOT = (
+    "https://raw.githubusercontent.com/StellarCanary/ProtocolCanary-Fixtures/"
+    "main/schemas/"
+)
+PROPOSED_ID_ROOT = (
+    "https://github.com/StellarCanary/ProtocolCanary-Fixtures/schemas/"
+)
 
 # The schemas that tools/validate/jsonschema_lite.py is used with, and the
 # module that loads each one. This list is not a guess: the test below
@@ -229,6 +245,54 @@ def check_document(name: str, document: object, *, proposed: bool) -> list[str]:
     return problems
 
 
+def canonical_id(name: str) -> str:
+    """The canonical $id a schema file at `name` must declare."""
+    root = PROPOSED_ID_ROOT if name.startswith("proposed/") else CANONICAL_ID_ROOT
+    return root + name
+
+
+def check_identifier(name: str, document: object) -> list[str]:
+    """The $id must be present, absolute and equal to the canonical path."""
+    problems: list[str] = []
+    if not isinstance(document, dict):
+        return [f"{name}: rule '$id': a schema must be a JSON object"]
+    identifier = document.get("$id")
+    if not isinstance(identifier, str) or not identifier.strip():
+        return [f"{name}: rule '$id': a schema must declare a non-empty $id"]
+    expected = canonical_id(name)
+    if not identifier.startswith("https://"):
+        problems.append(
+            f"{name}: rule '$id': $id {identifier!r} must be an absolute https URL"
+        )
+    if identifier != expected:
+        problems.append(
+            f"{name}: rule '$id': $id {identifier!r} does not match the "
+            f"canonical identifier {expected!r}"
+        )
+    return problems
+
+
+def check_draft(name: str, document: object, *, proposed: bool) -> list[str]:
+    """Every schema must declare a supported JSON Schema draft."""
+    problems: list[str] = []
+    if not isinstance(document, dict):
+        return [f"{name}: rule '$schema': a schema must be a JSON object"]
+    declared = document.get("$schema")
+    if not isinstance(declared, str) or not declared.strip():
+        return [f"{name}: rule '$schema': a schema must declare a $schema"]
+    if declared not in SUPPORTED_DRAFTS:
+        problems.append(
+            f"{name}: rule '$schema': unsupported draft {declared!r}; expected "
+            f"Draft-07 or Draft 2020-12"
+        )
+    elif not proposed and declared != DRAFT_2020_12:
+        problems.append(
+            f"{name}: rule '$schema': a top-level schema must declare "
+            f"$schema {DRAFT_2020_12!r}, got {declared!r}"
+        )
+    return problems
+
+
 def check_unique_ids(documents: list[tuple[str, object]]) -> list[str]:
     """No two schemas under schemas/ may declare the same $id."""
     problems: list[str] = []
@@ -359,6 +423,17 @@ class SchemaFileTests(unittest.TestCase):
     def test_no_two_schemas_share_an_id(self) -> None:
         self.assertEqual(check_unique_ids(self.documents), [])
 
+    def test_every_schema_id_matches_its_canonical_identifier(self) -> None:
+        for name, document in self.documents:
+            with self.subTest(schema=name):
+                self.assertEqual(check_identifier(name, document), [])
+
+    def test_every_schema_declares_a_supported_draft(self) -> None:
+        for name, document in self.documents:
+            with self.subTest(schema=name):
+                proposed = name.startswith("proposed/")
+                self.assertEqual(check_draft(name, document, proposed=proposed), [])
+
     def test_every_local_ref_resolves(self) -> None:
         for name, document in self.documents:
             with self.subTest(schema=name):
@@ -440,6 +515,63 @@ class ScopeTests(unittest.TestCase):
 
 class RuleTests(unittest.TestCase):
     """The rules must reject the mistakes they exist to catch."""
+
+    def test_a_canonical_id_is_accepted(self) -> None:
+        document = {
+            "title": "Canonical",
+            "$id": canonical_id("example-v1.schema.json"),
+            "$schema": DRAFT_2020_12,
+        }
+        self.assertEqual(
+            check_identifier("example-v1.schema.json", document), []
+        )
+
+    def test_an_id_for_the_wrong_schema_path_is_rejected(self) -> None:
+        document = {
+            "title": "Wrong path",
+            "$id": canonical_id("other-v1.schema.json"),
+            "$schema": DRAFT_2020_12,
+        }
+        problems = check_identifier("example-v1.schema.json", document)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("canonical identifier", problems[0])
+
+    def test_a_relative_id_is_rejected(self) -> None:
+        document = {
+            "title": "Relative",
+            "$id": "schemas/example-v1.schema.json",
+            "$schema": DRAFT_2020_12,
+        }
+        problems = check_identifier("example-v1.schema.json", document)
+        self.assertTrue(problems)
+        self.assertTrue(any("absolute https URL" in problem for problem in problems))
+
+    def test_a_schema_without_a_draft_is_rejected(self) -> None:
+        document = {"title": "No draft", "$id": canonical_id("x.schema.json")}
+        problems = check_draft("x.schema.json", document, proposed=False)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("$schema", problems[0])
+
+    def test_an_unknown_draft_is_rejected(self) -> None:
+        document = {
+            "title": "Unknown draft",
+            "$id": canonical_id("x.schema.json"),
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+        }
+        problems = check_draft("x.schema.json", document, proposed=True)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("unsupported draft", problems[0])
+
+    def test_draft_07_is_accepted_only_where_it_is_allowed(self) -> None:
+        document = {
+            "title": "Draft 07",
+            "$id": canonical_id("proposed/x.json"),
+            "$schema": DRAFT_07,
+        }
+        self.assertEqual(check_draft("proposed/x.json", document, proposed=True), [])
+        problems = check_draft("proposed/x.json", document, proposed=False)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("top-level schema", problems[0])
 
     def test_a_duplicate_id_is_rejected(self) -> None:
         first = {"title": "One", "$id": "https://example.test/same", "$schema": DRAFT_2020_12}

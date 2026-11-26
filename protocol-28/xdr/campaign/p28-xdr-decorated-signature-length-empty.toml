@@ -1,0 +1,58 @@
+# Protocol 28 / TransactionEnvelope: DecoratedSignature with empty signature.
+#
+# What this tests: a TransactionEnvelope V1 whose DecoratedSignature carries an
+# empty (0-byte) signature opaque sequence round-trips byte-for-byte.
+#
+# Why it matters: `struct DecoratedSignature` in Stellar-transaction.x declares
+# `opaque signature<64>`. Decoders and encoders must handle the minimum length
+# boundary (0 bytes) correctly without failing or misinterpreting the length prefix.
+#
+# Introduced in:
+# Protocol 1 (Stellar-transaction.x DecoratedSignature definition).
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". Generated using the official `stellar-xdr` 28.0.1 crate
+# (features base64, alloc, std) and rustc 1.99.1 (58cf8f9c3 2026-10-13).
+# The crate decodes and reproduces the exact encoding byte-for-byte.
+#
+# Construction expression:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::Payment(PaymentOp {
+#                   destination: MuxedAccount::Ed25519(Uint256([0x55; 32])),
+#                   asset: Asset::Native,
+#                   amount: 2_000,
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Determinism:
+# Deterministic typed XDR construction. Synthetic structural values only; no
+# cryptographic validity or network submission is claimed.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-decorated-signature-length-empty"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 containing a `DecoratedSignature` with an empty (0-byte) signature sequence round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAAAAAAAAAAfQAAAAAAAAAAFmZmZmAAAAAA=="

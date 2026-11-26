@@ -1,0 +1,64 @@
+# Protocol 28 / TransactionEnvelope: a CLAWBACK operation with CreditAlphanum4 asset, classic Ed25519 from account, and amount 17 round-trips.
+#
+# What this tests:
+# Embeds one CLAWBACK operation into a Protocol 28 TransactionEnvelope V1.
+# OperationBody::Clawback (OperationType 19) carries an Asset, a MuxedAccount
+# (the ``from`` field), and a signed int64 amount. The fixture verifies the
+# discriminant, field order, and CreditAlphanum4 asset encoding.
+#
+# Why it matters:
+# No pack envelope previously selected CLAWBACK (OperationType 19). A decoder
+# that confuses this tag with CLAWBACK_CLAIMABLE_BALANCE (tag 20), misorders
+# asset/from/amount, or mishandles the CreditAlphanum4 code padding would fail.
+#
+# Construction expression:
+#
+#   let credit4_operation = Operation {
+#       source_account: None,
+#       body: OperationBody::Clawback(ClawbackOp {
+#           asset: Asset::CreditAlphanum4(AlphaNum4 {
+#               asset_code: AssetCode4(*b"CLAW"),
+#               issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x33; 32]))),
+#           }),
+#           from: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           amount: 17,
+#       }),
+#   };
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0xaa; 32])),
+#           fee: 100,
+#           seq_num: SequenceNumber(1),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![credit4_operation],
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: Default::default(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Generated with official stellar-xdr = 28.0.1 (features base64, alloc, std),
+# rustc 1.99.0, WriteXdr::to_xdr_base64(Limits::none()).
+# Pinned schema: stellar/stellar-xdr commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694.
+#
+# The same crate round-tripped the value: TransactionEnvelope::from_xdr_base64
+# followed by to_xdr reproduced the 168-byte encoding exactly, byte for byte.
+#
+# Is it deterministic: Yes. No randomness, clock or network involved.
+#
+# Synthetic structural values: synthetic keys and amount prove only XDR structure.
+# The fixture does not establish that an asset or account exists, that clawback is
+# authorized or ledger accepted, or that the transaction passes protocol validation.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-operation-clawback"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "A `TransactionEnvelope` V1 with a `CLAWBACK` operation (CreditAlphanum4 asset, classic Ed25519 from, amount 17) round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAACqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgAAAGQAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAATAAAAAUNMQVcAAAAAMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMAAAAAREREREREREREREREREREREREREREREREREREREREREQAAAAAAAAAEQAAAAAAAAAA"

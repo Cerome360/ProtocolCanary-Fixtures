@@ -1,0 +1,1 @@
+- Add Protocol 28 V1 TransactionEnvelope fixtures for PATH_PAYMENT_STRICT_RECEIVE with a 5-Asset path and PATH_PAYMENT_STRICT_SEND with an empty path.

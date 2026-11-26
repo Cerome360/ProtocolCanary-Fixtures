@@ -385,16 +385,27 @@ class GitRevisionFallbackTests(unittest.TestCase):
 
     REVISION = "0123456789abcdef0123456789abcdef01234567"
 
-    def revision_with(self, *, return_value=None, side_effect=None) -> str:
+    def revision_with(
+        self, *, rev_parse=None, status="", side_effect=None
+    ) -> str:
+        """Run ``git_revision`` against a fake git.
+
+        ``rev_parse`` answers ``git rev-parse HEAD`` and ``status`` answers
+        ``git status --porcelain`` (a clean checkout answers the empty
+        string). ``side_effect`` makes every git call raise it.
+        """
+
+        def fake_run(args, **_kwargs):
+            if side_effect is not None:
+                raise side_effect
+            if "status" in args:
+                return self.completed(0, status)
+            return rev_parse
+
         with mock.patch.object(
-            record_structural.subprocess,
-            "run",
-            return_value=return_value,
-            side_effect=side_effect,
-        ) as run:
-            revision = record_structural.git_revision(REPO_ROOT)
-        run.assert_called_once()
-        return revision
+            record_structural.subprocess, "run", side_effect=fake_run
+        ):
+            return record_structural.git_revision(REPO_ROOT)
 
     @staticmethod
     def completed(returncode: int, stdout: str) -> subprocess.CompletedProcess:
@@ -421,7 +432,7 @@ class GitRevisionFallbackTests(unittest.TestCase):
 
     def test_a_failing_git_means_unknown_even_with_a_hash_shaped_answer(self) -> None:
         self.assertEqual(
-            self.revision_with(return_value=self.completed(1, self.REVISION + "\n")),
+            self.revision_with(rev_parse=self.completed(1, self.REVISION + "\n")),
             "unknown",
         )
 
@@ -429,17 +440,41 @@ class GitRevisionFallbackTests(unittest.TestCase):
         for stdout in ("", self.REVISION[:39], self.REVISION + "0", " " * 40):
             with self.subTest(stdout=stdout):
                 self.assertEqual(
-                    self.revision_with(return_value=self.completed(0, stdout)),
+                    self.revision_with(rev_parse=self.completed(0, stdout)),
                     "unknown",
                 )
 
-    def test_a_successful_full_answer_is_returned(self) -> None:
+    def test_a_successful_full_answer_on_a_clean_checkout_is_returned(self) -> None:
         for stdout in (self.REVISION, self.REVISION + "\n"):
             with self.subTest(stdout=stdout):
                 self.assertEqual(
-                    self.revision_with(return_value=self.completed(0, stdout)),
+                    self.revision_with(rev_parse=self.completed(0, stdout)),
                     self.REVISION,
                 )
+
+    def test_a_dirty_worktree_or_index_means_unknown(self) -> None:
+        """Uncommitted changes must not be attributed to the clean commit."""
+        clean = self.completed(0, self.REVISION)
+        for dirty in (
+            " M tools/evidence/record_structural.py\n",
+            "M  tools/evidence/record_structural.py\n",
+            "?? new-file.txt\n",
+        ):
+            with self.subTest(dirty=dirty):
+                self.assertEqual(
+                    self.revision_with(rev_parse=clean, status=dirty), "unknown"
+                )
+
+    def test_a_failing_status_check_means_unknown(self) -> None:
+        with mock.patch.object(
+            record_structural.subprocess, "run"
+        ) as run:
+            run.side_effect = [
+                self.completed(0, self.REVISION),
+                self.completed(128, ""),
+            ]
+            self.assertEqual(record_structural.git_revision(REPO_ROOT), "unknown")
+        self.assertIn("status", run.call_args_list[-1].args[0])
 
 
 class RenderRecordTests(unittest.TestCase):

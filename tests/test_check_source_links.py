@@ -218,6 +218,82 @@ class TestCheckSourceLinks(unittest.TestCase):
             "https://example.com/wiki/Foo_(bar)",
         )
 
+    def test_clean_comment_url_complex_trailing_punctuation(self) -> None:
+        # Multi-char trailing combinations are stripped one character at a time,
+        # innermost-last.  Each assert documents what the stripper produces.
+
+        # ".):": colon → paren (no opening paren in URL) → dot → clean
+        self.assertEqual(
+            clean_comment_url("https://example.com/foo.):"),
+            "https://example.com/foo",
+        )
+        # ".,;:" — four-character strip
+        self.assertEqual(
+            clean_comment_url("https://example.com/foo.,;:"),
+            "https://example.com/foo",
+        )
+        # Closing paren preceded by other strippable chars; paren itself strips
+        # because there is no matching opening paren.
+        self.assertEqual(
+            clean_comment_url("https://example.com/foo.,)"),
+            "https://example.com/foo",
+        )
+        # ">" is not in the strippable set; stripping stops at ">".
+        self.assertEqual(
+            clean_comment_url("https://example.com/foo>"),
+            "https://example.com/foo>",
+        )
+        # "]" is not in the strippable set; only the trailing "," is removed.
+        self.assertEqual(
+            clean_comment_url("https://example.com/foo],"),
+            "https://example.com/foo]",
+        )
+        # Clean URL with no trailing punctuation is returned unchanged.
+        self.assertEqual(
+            clean_comment_url("https://example.com/clean"),
+            "https://example.com/clean",
+        )
+
+    def test_clean_comment_url_with_credentials_is_idempotent_input(self) -> None:
+        # clean_comment_url only strips trailing punctuation; it does not
+        # strip credentials.  strip_credentials must be applied separately.
+        # After stripping trailing punctuation the result is a structurally
+        # valid URL that strip_credentials can process.
+        raw = "https://user:pass@example.com/path,"
+        cleaned = clean_comment_url(raw)
+        self.assertEqual(cleaned, "https://user:pass@example.com/path")
+        # strip_credentials on the cleaned URL produces a valid HTTP URL.
+        sanitized = strip_credentials(cleaned)
+        self.assertEqual(sanitized, "https://example.com/path")
+        self.assertTrue(sanitized.startswith("https://"))
+
+    def test_strip_credentials_extended(self) -> None:
+        # URL with only a username (no password) — credentials still removed.
+        self.assertEqual(
+            strip_credentials("https://token@github.com/org/repo"),
+            "https://github.com/org/repo",
+        )
+        # URL with an empty password field.
+        self.assertEqual(
+            strip_credentials("https://user:@example.com/path"),
+            "https://example.com/path",
+        )
+        # Non-HTTP scheme with credentials — credentials are stripped regardless.
+        self.assertEqual(
+            strip_credentials("ftp://user:pass@ftp.example.com/file"),
+            "ftp://ftp.example.com/file",
+        )
+        # URL with no credentials remains unchanged.
+        self.assertEqual(
+            strip_credentials("https://example.com/no-creds"),
+            "https://example.com/no-creds",
+        )
+        # After stripping, the resulting URL starts with the original scheme and
+        # host — it is a valid HTTP(S) URL suitable for a HEAD/GET request.
+        stripped = strip_credentials("https://user:pass@api.example.com/v1/resource")
+        self.assertEqual(stripped, "https://api.example.com/v1/resource")
+        self.assertTrue(stripped.startswith("https://api.example.com"))
+
     def test_extract_links_from_file(self) -> None:
         fixture_content = """# Header comment 1 with https://example.com/comment1.
 # Header comment 2 with https://user:pass@example.com/comment2:

@@ -6,7 +6,7 @@ explicit placeholders for missing values. Untouched skeletons intentionally
 fail validation until placeholders are replaced with real, verified evidence.
 
 Usage:
-    python3 tools/scaffold/new_fixture.py --surface {xdr,rpc,soroban} --protocol N --id ID --category CAT [--output-dir DIR]
+    python3 tools/scaffold/new_fixture.py --surface {xdr,rpc,soroban} --protocol N --id ID --category CAT [--output-dir DIR] [--force]
 """
 from __future__ import annotations
 
@@ -70,6 +70,38 @@ def validate_id_rule(fixture_id: str) -> str | None:
 
 
 def render_skeleton(surface: str, protocol: int, fixture_id: str, category: str) -> str:
+    """Render a skeleton fixture template with section headers and explicit placeholders.
+
+    The scaffold output is not usable verification evidence until explicitly completed
+    with verified evidence, authoritative source references, and valid payloads.
+    Untouched skeletons intentionally fail validator checks.
+
+    Args:
+        surface: The target fixture surface. Accepted values are "xdr", "rpc",
+            or "soroban" (from validate.SURFACES).
+        protocol: The target protocol version as a positive integer.
+        fixture_id: A unique lowercase fixture identifier matching schema requirements.
+        category: The fixture category (e.g. "cap-0083", "ledger", "smoke").
+
+    Returns:
+        A TOML string containing required header documentation sections,
+        metadata declarations, and surface-specific body templates.
+
+    Placeholders:
+        Values containing "TODO" are intentional placeholders that must be replaced:
+        - Header documentation comments (# TODO: ...) for test intent, rationale,
+          protocol origin, expected results/sources, and determinism.
+        - "description" ("TODO: Brief description of the fixture").
+        - "source_reference" ("TODO-REPLACE-WITH-CHECKED-SOURCE").
+        - For surface "xdr": "type" ("TODO-XDR-TYPE"), "kind" ("TODO-XDR-KIND"),
+          and "value_base64" ("TODO-BASE64-PAYLOAD").
+        - For surface "rpc": "method" ("TODO-RPC-METHOD"), and assert array table fields
+          "kind" ("TODO-ASSERT-KIND"), "field" ("TODO-RESPONSE-FIELD"), and "value"
+          ("TODO-EXPECTED-VALUE").
+        - For surface "soroban": "source_account" ("TODO-SOURCE-ACCOUNT"), "contract_id"
+          ("TODO-CONTRACT-ID"), "function" ("TODO-FUNCTION-NAME"), "sequence_number"
+          ("TODO-SEQUENCE-NUMBER"), and expect section "kind" ("TODO-EXPECT-KIND").
+    """
     lines = [
         "# What this tests:",
         "# TODO: Describe what Stellar behavior this fixture tests.",
@@ -156,6 +188,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=str(REPO_ROOT),
         help="base output directory (default: repository root)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing fixture file (a symlink is still refused)",
+    )
     return parser.parse_args(argv)
 
 
@@ -192,6 +229,16 @@ def main(argv: list[str]) -> int:
     if not target_file.resolve().is_relative_to(pack_dir):
         print(f"error: {target_file} is outside {pack_dir}", file=sys.stderr)
         return 1
+    # A symlink is refused even with --force: opening it for writing could
+    # replace a file outside the pack, and that no-overwrite contract is not
+    # negotiable.
+    if target_file.is_symlink():
+        print(f"error: refusing to replace symlink: {target_file}", file=sys.stderr)
+        return 1
+    if target_file.exists() and not args.force:
+        print(f"error: file already exists: {target_file}", file=sys.stderr)
+        return 1
+
     content = render_skeleton(args.surface, args.protocol, args.id, args.category)
     created_dirs: list[Path] = []
     missing: list[Path] = []
@@ -217,7 +264,9 @@ def main(argv: list[str]) -> int:
         # opening, preserving the no-overwrite and no-outside-write contract.
         if target_file.is_symlink():
             raise FileExistsError(target_file)
-        handle = target_file.open("x", encoding="utf-8", newline="\n")
+        handle = target_file.open(
+            "w" if args.force else "x", encoding="utf-8", newline="\n"
+        )
         created_file = True
         with handle:
             handle.write(content)

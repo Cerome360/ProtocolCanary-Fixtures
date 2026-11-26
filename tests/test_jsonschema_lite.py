@@ -133,6 +133,23 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(self.errors(2, schema), [])
         self.assertNotEqual(self.errors(0, schema), [])
         self.assertNotEqual(self.errors(4, schema), [])
+        # Exact boundary values must be accepted.
+        self.assertEqual(self.errors(1, schema), [])
+        self.assertEqual(self.errors(3, schema), [])
+        # Float bounds: exact boundary values accepted, out-of-range rejected.
+        float_schema = {"type": "number", "minimum": -1.5, "maximum": 2.5}
+        self.assertEqual(self.errors(-1.5, float_schema), [])
+        self.assertEqual(self.errors(2.5, float_schema), [])
+        self.assertEqual(self.errors(0.0, float_schema), [])
+        self.assertNotEqual(self.errors(-2.0, float_schema), [])
+        self.assertNotEqual(self.errors(3.0, float_schema), [])
+        # Negative integer ranges.
+        neg_schema = {"type": "integer", "minimum": -10, "maximum": -1}
+        self.assertEqual(self.errors(-5, neg_schema), [])
+        self.assertEqual(self.errors(-10, neg_schema), [])
+        self.assertEqual(self.errors(-1, neg_schema), [])
+        self.assertNotEqual(self.errors(-11, neg_schema), [])
+        self.assertNotEqual(self.errors(0, neg_schema), [])
 
     def test_array_keywords(self) -> None:
         schema = {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": True,
@@ -142,6 +159,18 @@ class KeywordTests(unittest.TestCase):
         self.assertNotEqual(self.errors([1, 2, 3], schema), [])
         self.assertIn("repeats", self.errors([1, 1], schema)[0])
         self.assertIn("[1]", self.errors([1, "x"], schema)[0])
+        # The validator uses Python equality for uniqueItems: 1 == True in
+        # Python, so [1, True] is flagged as containing a duplicate. This
+        # documents the current behaviour.
+        mixed_unique_schema = {"type": "array", "uniqueItems": True}
+        self.assertNotEqual(self.errors([1, True], mixed_unique_schema), [])
+        self.assertNotEqual(self.errors([0, False], mixed_unique_schema), [])
+        # A boundary array with exactly one element passes uniqueItems.
+        self.assertEqual(self.errors([42], mixed_unique_schema), [])
+        # An empty array passes uniqueItems.
+        self.assertEqual(self.errors([], mixed_unique_schema), [])
+        # Mixed-type arrays with actual duplicates are still rejected.
+        self.assertNotEqual(self.errors(["a", "a"], mixed_unique_schema), [])
 
     def test_object_keywords(self) -> None:
         schema = {

@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-path_payment_strict_receive",
+  "fixtureSha256": "019154205c0ec28721e7117c929d212f09ac629323c52fddad39a26e99f88cd7",
+  "method": "structural",
+  "checkedAt": "2026-11-21T22:57:41Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "249b523f90d820917564550d6018c988ce4a8536"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

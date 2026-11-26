@@ -1,0 +1,1 @@
+- Add Protocol 28 TransactionEnvelope fixtures for EXTEND_FOOTPRINT_TTL (ExtensionPoint V0, maximum uint32 extendTo) and RESTORE_FOOTPRINT (ExtensionPoint V0, no additional field).

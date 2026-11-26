@@ -1,0 +1,68 @@
+# Protocol 28 / LedgerEntry: TrustLineEntry `balance` at i64 minimum and `limit` at i64 maximum round-trips.
+#
+# What this tests:
+# A `TRUSTLINE` LedgerEntry with:
+#   - `balance = i64::MIN` (-9223372036854775808)
+#   - `limit   = i64::MAX` (9223372036854775807)
+# confirming that both signed int64 TrustLineEntry scalars are encoded and
+# decoded correctly at their extreme boundaries.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `struct TrustLineEntry` (`balance` and `limit` both typed `Int64`) — Stellar-ledger-entries.x lines 276-307;
+#   * `union TrustLineAsset` — Stellar-ledger-entries.x lines 247-262;
+#   * `enum LedgerEntryType` — Stellar-ledger-entries.x lines 92-104;
+#   * `struct LedgerEntry` — Stellar-ledger-entries.x lines 548-586.
+#
+# Why it matters: existing TrustLineEntry fixtures use mid-range values for
+# `balance` and `limit`. This fixture pushes both signed int64 scalars to their
+# structural limits to confirm boundary encoding across the full codec path.
+#
+# Expected result and where it comes from: kind = "roundtrip" means a
+# decoder must accept this entry and re-encoding it must reproduce
+# value_base64 byte for byte, not merely an equal value. The payload was
+# produced by a program that builds the typed value with the official
+# `stellar-xdr 28.0.1` crate (features base64, alloc — the crate version
+# Protocol-Canary's canary-xdr pins for Protocol 28; rustc 1.91.0) and
+# serialises it with to_xdr_base64(Limits::none()), never hand-assembled.
+# Generation expression, recorded verbatim:
+#
+#   LedgerEntry {
+#       last_modified_ledger_seq: 1_000,
+#       data: LedgerEntryData::Trustline(TrustLineEntry {
+#           account_id: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x33; 32]))),
+#           asset: TrustLineAsset::CreditAlphanum12(AlphaNum12 {
+#               asset_code: AssetCode12(*b"TWELVE_BYTES"),
+#               issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x55; 32]))),
+#           }),
+#           balance: i64::MIN,
+#           limit: i64::MAX,
+#           flags: 0,
+#           ext: TrustLineEntryExt::V0,
+#       }),
+#       ext: LedgerEntryExt::V0,
+#   }
+#
+# The same program asserted the crate's own round trip: from_xdr_base64
+# returned Ok and re-encoding the decoded value reproduced the encoding exactly.
+#
+# Is it deterministic: yes. The generator uses no randomness, clock or
+# network; the same expression always yields the same bytes.
+#
+# Every payload byte is a synthetic structural value, not a capture of a real
+# ledger entry: the 0x33-filled account id and 0x55-filled issuer are fixed
+# placeholders; no secret key is used or represented anywhere. Nothing here
+# was observed on a network.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-ledger-entries.x
+
+id = "p28-xdr-ledger-entry-trustline-i64-boundaries"
+protocol = 28
+surface = "xdr"
+category = "ledger-entry"
+description = "A `TRUSTLINE` `LedgerEntry` with `balance` at i64 minimum and `limit` at i64 maximum round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-ledger-entries.x"
+
+type = "LedgerEntry"
+kind = "roundtrip"
+value_base64 = "AAAD6AAAAAEAAAAAMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMAAAACVFdFTFZFX0JZVEVTAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVgAAAAAAAAAB//////////wAAAAAAAAAAAAAAAA=="

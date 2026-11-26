@@ -721,6 +721,94 @@ class ObservationParityTests(unittest.TestCase):
                 self.assertIn(UPSTREAM_COMMIT, fx["_text"])
 
 
+class FootprintPartitionTests(unittest.TestCase):
+    """Footprints are a disjoint partition, not two overlapping key lists (#622).
+
+    Issue #622 names ``schemas/simulation-resource.schema.json``; the shipped
+    equivalent for this staged corpus is the proposed
+    ``schemas/proposed/simulation-resource-estimate.expect.json``. The staged
+    observations are pure reads, so the read-write half is legitimately empty --
+    the partition checks are written to be non-vacuous for both halves and to
+    fail if a future fixture puts one key in both.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.fixtures = load_staged()
+        cls.decoded = {
+            fixture_id: decode_soroban_transaction_data(
+                fx["staged_observation"]["transaction_data"]
+            )
+            for fixture_id, fx in cls.fixtures.items()
+        }
+
+    @staticmethod
+    def key_identity(key: dict) -> str:
+        """A stable identity for a decoded LedgerKey."""
+        return json.dumps(key, sort_keys=True, separators=(",", ":"))
+
+    def test_read_only_and_read_write_footprints_do_not_overlap(self) -> None:
+        for fixture_id, decoded in self.decoded.items():
+            with self.subTest(fixture=fixture_id):
+                read_only = {self.key_identity(k) for k in decoded["footprint_read_only"]}
+                read_write = {self.key_identity(k) for k in decoded["footprint_read_write"]}
+                self.assertEqual(read_only & read_write, set())
+                self.assertEqual(
+                    len(read_only), len(decoded["footprint_read_only"]),
+                    "duplicate key inside the read-only footprint",
+                )
+                self.assertEqual(
+                    len(read_write), len(decoded["footprint_read_write"]),
+                    "duplicate key inside the read-write footprint",
+                )
+
+    def test_every_footprint_key_is_completely_decoded(self) -> None:
+        for fixture_id, decoded in self.decoded.items():
+            for collection in ("footprint_read_only", "footprint_read_write"):
+                for key in decoded[collection]:
+                    with self.subTest(fixture=fixture_id, collection=collection):
+                        self.assertEqual(key["entry_type"], LEDGER_ENTRY_CONTRACT_DATA)
+                        self.assertIn(key["address"]["name"], {"Contract", "Account"})
+                        self.assertEqual(len(key["address"]["hash"]), 64)
+                        self.assertIn(
+                            key["durability"],
+                            {CONTRACT_DATA_DURABILITY_PERSISTENT, 0},
+                        )
+
+    def test_declared_footprint_counts_match_the_decoded_partition(self) -> None:
+        for fixture_id, fx in self.fixtures.items():
+            decoded = self.decoded[fixture_id]
+            actual = {
+                "footprint_read_only_count": len(decoded["footprint_read_only"]),
+                "footprint_read_write_count": len(decoded["footprint_read_write"]),
+            }
+            for field, count in actual.items():
+                if field in fx["expect"]:
+                    with self.subTest(fixture=fixture_id, field=field):
+                        self.assertEqual(fx["expect"][field], count)
+                        self.assertGreaterEqual(count, 0)
+    def test_every_fixture_conforms_to_the_resource_schema(self) -> None:
+        for fixture_id, fx in self.fixtures.items():
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(check_expect(fx["expect"]), [])
+                for field in (
+                    "footprint_read_only_count",
+                    "footprint_read_write_count",
+                ):
+                    if field in fx["expect"]:
+                        self.assertIn(field, PROPOSED_SCHEMA["properties"])
+
+    def test_the_read_write_half_is_empty_for_these_pure_reads(self) -> None:
+        # Pinned as an exact property of the recorded observations: a protocol
+        # upgrade that starts declaring writes for a read-only accessor changes
+        # both the fee and the ledger keys the transaction may touch.
+        for fixture_id, decoded in self.decoded.items():
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(decoded["footprint_read_write"], [])
+                self.assertEqual(decoded["write_bytes"], 0)
+                self.assertEqual(decoded["disk_read_bytes"], 0)
+
+
 class StagingGuardTests(unittest.TestCase):
     """Nothing here may leak into the consumable corpus."""
 

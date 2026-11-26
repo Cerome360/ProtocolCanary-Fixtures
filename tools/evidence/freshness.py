@@ -43,19 +43,33 @@ class RecordFreshness:
 
 
 def parse_checked_at(value: object, now: datetime | None = None) -> datetime:
-    """Parse checkedAt ISO-8601 string and verify it is not in the future."""
+    """Parse a checkedAt RFC 3339 UTC instant and reject future values.
+
+    Fractional seconds beyond microsecond resolution are truncated downwards,
+    matching the fixture validator's ``_parse_instant`` policy, so a valid
+    timestamp with any number of fractional digits parses consistently in both
+    tools. Raises :class:`FreshnessFormatError` when the value is not an
+    RFC 3339 UTC instant ending in ``Z`` or is later than ``now`` (which
+    defaults to the current UTC instant).
+    """
     if not isinstance(value, str) or not ISO_INSTANT_RE.fullmatch(value):
         raise FreshnessFormatError(
             f"unparseable date string: {value!r} is not an RFC 3339 UTC instant (e.g. 2026-10-22T07:00:00Z)"
         )
 
-    # Strip Z for strptime or parse ISO
-    raw = value.rstrip("Z")
+    # Strip the Z and truncate any fraction to microseconds, the same policy
+    # the fixture validator uses. Python's %f directive would reject a valid
+    # RFC 3339 instant with more than six fractional-second digits.
+    text = value[:-1] if value.endswith("Z") else value
+    head, _, fraction = text.partition(".")
     try:
-        if "." in raw:
-            dt = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%S.%f")
+        if fraction:
+            micros = int(fraction[:6].ljust(6, "0"))
+            dt = datetime.strptime(head, "%Y-%m-%dT%H:%M:%S").replace(
+                microsecond=micros
+            )
         else:
-            dt = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%S")
+            dt = datetime.strptime(head, "%Y-%m-%dT%H:%M:%S")
     except ValueError as exc:
         raise FreshnessFormatError(f"unparseable date string: {exc}") from exc
 

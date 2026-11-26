@@ -1,0 +1,75 @@
+# Protocol 28 / TransactionEnvelope V1: integer fields at their minimum values.
+#
+# The V1 Transaction struct carries seqNum as a SequenceNumber (typedef int64)
+# and fee as a uint32. This fixture sets seqNum to the signed int64 minimum
+# (i64::MIN = -9223372036854775808) and fee to the unsigned uint32 minimum (0).
+# Together they confirm the codec represents the full signed/unsigned ranges at
+# the low endpoint.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `union TransactionEnvelope` — Stellar-transaction.x lines 1001-1010;
+#   * `struct TransactionV1Envelope` — Stellar-transaction.x lines 967-973;
+#   * `struct Transaction` — Stellar-transaction.x lines 932-965;
+#   * `typedef int64 SequenceNumber` — Stellar-types.x line 71;
+#   * `typedef uint32 uint32` — Stellar-types.x (fee field, uint32).
+#
+# Why it matters: a decoder that treats seqNum as unsigned would decode i64::MIN
+# as a large positive number. A fee decoder that uses a signed type would
+# behave correctly here but fail at u32::MAX. This fixture anchors the low end
+# of both fields independently.
+#
+# The payload was produced by a program that builds the typed value with the
+# official `stellar-xdr` 28.0.1 crate (features base64 and alloc — the crate
+# version Protocol-Canary's canary-xdr pins for Protocol 28) and serialises
+# it with WriteXdr::to_xdr_base64(Limits::none()), never hand-assembled.
+#
+# Generation expression, recorded verbatim:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 0,                              // uint32 minimum
+#           seq_num: SequenceNumber(i64::MIN),   // -9223372036854775808
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::Payment(PaymentOp {
+#                   destination: MuxedAccount::Ed25519(Uint256([0x55; 32])),
+#                   asset: Asset::Native,
+#                   amount: 2_000,
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Crate: stellar-xdr 28.0.1; rustc 1.99.1 (58cf8f9c3 2026-10-13);
+# generated 2026-11-23 (UTC). The same crate round-tripped the value:
+# TransactionEnvelope::from_xdr_base64 followed by to_xdr reproduced the
+# 200-byte encoding exactly, byte for byte.
+#
+# Every payload byte is a synthetic structural value, not a capture of a
+# real network object: the 0x44-filled source account and 0x55-filled payment
+# destination are not real accounts, the 0x66-filled hint and signature are not
+# a valid signature, and the fee = 0 and seqNum = i64::MIN are boundary test
+# values. The signature does not sign anything: this is not a submitted
+# transaction and was never observed on a network.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-transaction-envelope-v1-integer-boundaries-minimum"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "A `TransactionEnvelope` V1 with seqNum = i64::MIN (-9223372036854775808) and fee = 0 round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAAAAAAAAAAfQAAAAAAAAAAFmZmZmAAAAQGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="

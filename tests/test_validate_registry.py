@@ -387,6 +387,65 @@ class UnusableInputTests(ValidateRegistryTestCase):
         self.assertIn("usage: validate_registry.py", result.stderr)
 
 
+class MalformedRegistryJsonTests(ValidateRegistryTestCase):
+    """Corrupted registry JSON fails with a located diagnostic, not a traceback.
+
+    docs/tools.md classifies an unreadable or invalid registry as unusable
+    input, so the documented exit code is 2 (not a cross-validation
+    failure). What matters here is that the parser error is caught and
+    reported with the registry path and its line/column rather than escaping
+    as an unhandled ``json.JSONDecodeError``.
+    """
+
+    def write_malformed(self, data: bytes) -> Path:
+        path = registry_path_for(self.pack)
+        path.write_bytes(data)
+        return path
+
+    def test_each_corruption_names_the_file_and_the_broken_line(self) -> None:
+        cases = [
+            ("open-brace", b"{not json at all", 1, 2),
+            (
+                "trailing-comma",
+                b'{\n  "registryVersion": 1,\n  "fixtures": [,\n]\n}',
+                3,
+                16,
+            ),
+            ("truncated", b'{"registryVersion": 1,', 1, 23),
+        ]
+        for name, data, line, column in cases:
+            with self.subTest(case=name):
+                path = self.write_malformed(data)
+                code, out, err = self.run_tool(str(self.pack))
+                self.assertEqual(code, 2, err)
+                self.assertEqual(out, "")
+                self.assertIn(
+                    f"{path}: is not valid JSON (line {line}, column {column})",
+                    err,
+                )
+                self.assertNotIn("Traceback (most recent call last)", err)
+                self.assertNotIn("FAILED:", err)
+
+    def test_the_real_cli_reports_the_located_error_without_a_traceback(self) -> None:
+        path = self.write_malformed(b'{\n  "fixtures": [,\n]\n}')
+        result = self.run_subprocess(str(self.pack), "--registry", str(path))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn(
+            f"{path}: is not valid JSON (line 2, column 16)",
+            result.stderr,
+        )
+        self.assertIn("Expecting value", result.stderr)
+        self.assertNotIn("Traceback (most recent call last)", result.stderr)
+
+    def test_an_empty_registry_is_reported_at_line_one(self) -> None:
+        path = self.write_malformed(b"")
+        code, out, err = self.run_tool(str(self.pack))
+        self.assertEqual(code, 2)
+        self.assertIn(f"{path}: is not valid JSON (line 1, column 1)", err)
+        self.assertNotIn("Traceback (most recent call last)", err)
+
+
 class CommandLineTests(ValidateRegistryTestCase):
     """The documented command-line contract."""
 

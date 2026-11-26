@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-clawback_claimable_balance",
+  "fixtureSha256": "1bf7752dfce9bcce3e27d9c05791135caefc02c097184ff030dab4c2617d7fe8",
+  "method": "structural",
+  "checkedAt": "2026-11-21T22:57:41Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "249b523f90d820917564550d6018c988ce4a8536"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

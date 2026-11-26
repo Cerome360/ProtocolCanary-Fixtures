@@ -1,0 +1,1 @@
+- Add a Protocol 28 `CREATE_PASSIVE_SELL_OFFER` V1 TransactionEnvelope fixture with boundary values (`i64::MAX` amount, `i32::MAX`/`i32::MIN` price).

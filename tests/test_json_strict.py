@@ -28,3 +28,18 @@ class StrictJSONTests(unittest.TestCase):
     def test_malformed_json_keeps_location_and_parser_message(self) -> None:
         with self.assertRaisesRegex(JSONInputError, r"line 1, column 2.*Expecting property name"):
             load_json("{x}", "registry")
+
+    def test_empty_string_raises_json_input_error(self) -> None:
+        for text in ("", "   \n\t  "):
+            with self.subTest(text=repr(text)), self.assertRaises(JSONInputError):
+                load_json(text, "empty-input")
+
+    def test_trailing_data_raises_json_input_error(self) -> None:
+        with self.assertRaises(JSONInputError):
+            load_json('{"a": 1} trailing', "trailing-data")
+
+    def test_top_level_scalar_primitives_load_cleanly(self) -> None:
+        self.assertEqual(load_json("true"), True)
+        self.assertEqual(load_json("123"), 123)
+        self.assertEqual(load_json('"hello"'), "hello")
+        self.assertIsNone(load_json("null"))

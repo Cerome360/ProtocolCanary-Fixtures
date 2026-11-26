@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-ledger-entry-last-modified-u32-max",
+  "fixtureSha256": "9744aae8f0725c6951f3056d79c42933931b49a276225a190c7cf0c37f7164be",
+  "method": "structural",
+  "checkedAt": "2026-11-23T10:14:22Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "1498e1c4a94745267fea149e28b09f0b2b084498"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

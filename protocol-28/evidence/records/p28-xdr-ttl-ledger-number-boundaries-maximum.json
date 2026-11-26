@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-ttl-ledger-number-boundaries-maximum",
+  "fixtureSha256": "1097414d00fecf5ce3be9f126e827e10172f2a2feab38bef9ae70def8f068f35",
+  "method": "structural",
+  "checkedAt": "2026-11-22T02:19:39Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "249b523f90d820917564550d6018c988ce4a8536"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

@@ -1,0 +1,1 @@
+- Add a Protocol 28 TransactionEnvelope V1 fixture covering the INFLATION and END_SPONSORING_FUTURE_RESERVES void operation arms.

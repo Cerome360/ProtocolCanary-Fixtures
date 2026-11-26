@@ -10,6 +10,7 @@ Run with: python3 -m unittest discover tests
 from __future__ import annotations
 
 import contextlib
+import gzip
 import io
 import json
 import os
@@ -315,6 +316,95 @@ class UnsafeArchiveTests(VerifyBase):
         self.assertIn("disagrees", err.getvalue())
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(verify.main([str(archive), "--manifest", str(path)]), 0)
+
+
+class ArchiveHeaderIntegrityTests(VerifyBase):
+    """The gzip and tar headers are checked, not merely tolerated (issue #626).
+
+    Issue #626 names ``scripts/verify_archive.py``; the implementation in this
+    repository lives at ``tools/pack/verify_archive.py``. It distinguishes
+    three outcomes: 0 valid, 1 verification failed, and 2 unusable input. A
+    header that cannot be read at all is unusable input (2), while a readable
+    archive whose header describes an unsafe member is a verification failure
+    (1). Both are covered so the distinction cannot drift.
+    """
+
+    @staticmethod
+    def tar_header_checksum(header: bytes) -> bytes:
+        """Return the octal checksum field for a POSIX tar header block."""
+        assert len(header) == tarfile.BLOCKSIZE
+        blanked = header[:148] + b" " * 8 + header[156:]
+        return f"{sum(blanked):06o}\0 ".encode("ascii")
+
+    def rewrite_first_tar_header(self, archive: Path, *, name: str | None = None) -> Path:
+        """Rewrite one header field and repair the checksum, leaving it readable."""
+        raw = gzip.decompress(archive.read_bytes())
+        header = bytearray(raw[: tarfile.BLOCKSIZE])
+        if name is not None:
+            encoded = name.encode("utf-8")
+            self.assertLessEqual(len(encoded), 100)
+            header[:100] = encoded.ljust(100, b"\0")
+        header[148:156] = self.tar_header_checksum(bytes(header))
+        rewritten = self.root / "rewritten.tar.gz"
+        rewritten.write_bytes(gzip.compress(bytes(header) + raw[tarfile.BLOCKSIZE :], mtime=0))
+        return rewritten
+
+    def test_a_valid_archive_has_a_well_formed_gzip_header(self) -> None:
+        archive = self.valid_archive()
+        header = archive.read_bytes()[:10]
+        self.assertEqual(header[:2], b"\x1f\x8b")  # gzip magic
+        self.assertEqual(header[2], 8)  # DEFLATE
+        self.assertEqual(header[3] & 0xE0, 0)  # reserved flag bits are clear
+        tar_stream = gzip.decompress(archive.read_bytes())
+        self.assertGreaterEqual(len(tar_stream), tarfile.BLOCKSIZE)
+        self.assertEqual(len(tar_stream) % tarfile.BLOCKSIZE, 0)
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(verify.main([str(archive)]), 0)
+        self.assertIn("OK:", out.getvalue())
+
+    def test_a_corrupted_gzip_header_is_unusable_input(self) -> None:
+        archive = self.valid_archive()
+        data = bytearray(archive.read_bytes())
+        data[0] = 0x00  # no longer a gzip magic number
+        corrupt = self.root / "bad-gzip-header.tar.gz"
+        corrupt.write_bytes(bytes(data))
+
+        with self.assertRaisesRegex(verify.UnreadableArchive, "gzip|not a gzip"):
+            verify.verify_archive(corrupt)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(verify.main([str(corrupt)]), 2)
+        self.assertIn("error:", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_a_corrupted_tar_header_checksum_is_described(self) -> None:
+        archive = self.valid_archive()
+        raw = bytearray(gzip.decompress(archive.read_bytes()))
+        raw[148:156] = b"0000000\0"  # deliberately not the header checksum
+        corrupt = self.root / "bad-tar-checksum.tar.gz"
+        corrupt.write_bytes(gzip.compress(bytes(raw), mtime=0))
+
+        with self.assertRaisesRegex(verify.UnreadableArchive, "checksum"):
+            verify.verify_archive(corrupt)
+
+    def test_a_readable_but_tampered_header_fails_verification(self) -> None:
+        # The archive remains structurally readable because the checksum is
+        # repaired; the member it describes is unsafe, so this is a content
+        # verification failure (exit 1), not an unreadable-input error (2).
+        tampered = self.rewrite_first_tar_header(
+            self.valid_archive(), name="../escaped.toml"
+        )
+        result = verify.verify_archive(tampered)
+        self.assertFalse(result.ok)
+        self.assertRegex("\n".join(result.problems), r"\.\.")
+
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(verify.main([str(tampered)]), 1)
+        self.assertIn("FAILED", err.getvalue())
+        self.assertIn("..", err.getvalue())
 
 
 class PathRuleGapTests(VerifyBase):

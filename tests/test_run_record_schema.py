@@ -142,6 +142,73 @@ class RunRecordSchemaTests(unittest.TestCase):
         self.assertFalse(SCHEMA["additionalProperties"])
 
 
+class EmptyRunRecordTests(unittest.TestCase):
+    """Records for runs that executed no fixtures.
+
+    run-record-v1 stores one engine/pack verification outcome, not per-run
+    execution totals: it has no passed/failed/skipped counters and no
+    duration field, and its closed object rejects any key it does not
+    declare. An empty run is therefore the minimal record -- the required
+    fields plus no optional evidence reference -- rather than a record with
+    explicit zero counters. The tests below pin both halves of that shape so
+    an attempt to add counts or a negative duration is refused instead of
+    silently accepted.
+    """
+
+    def empty_record(self) -> dict:
+        record = copy.deepcopy(RECORD)
+        record.pop("evidenceRef", None)
+        record["outcome"] = "passed"
+        return record
+
+    def test_an_empty_run_record_validates_against_the_schema(self) -> None:
+        self.assertEqual(schema_problems(self.empty_record()), [])
+
+    def test_an_empty_run_record_is_accepted_by_the_reader(self) -> None:
+        self.assertEqual(run_records.validate_run_record(self.empty_record()), [])
+
+    def test_the_record_has_no_execution_count_or_duration_fields(self) -> None:
+        for field in ("passed", "failed", "skipped", "duration", "counts"):
+            with self.subTest(field=field):
+                self.assertNotIn(field, SCHEMA["properties"])
+                self.assertNotIn(field, run_records.REQUIRED_FIELDS)
+                self.assertNotIn(field, run_records.OPTIONAL_FIELDS)
+
+    def test_explicit_zero_totals_are_refused_by_both(self) -> None:
+        for field in ("passed", "failed", "skipped"):
+            with self.subTest(field=field):
+                record = self.empty_record()
+                record[field] = 0
+                self.assertTrue(schema_problems(record))
+                problems = run_records.validate_run_record(record)
+                self.assertTrue(problems)
+                self.assertTrue(any(field in problem for problem in problems), problems)
+
+    def test_a_zero_count_object_is_refused_by_both(self) -> None:
+        record = self.empty_record()
+        record["counts"] = {"passed": 0, "failed": 0, "skipped": 0}
+        self.assertTrue(schema_problems(record))
+        problems = run_records.validate_run_record(record)
+        self.assertTrue(problems)
+        self.assertTrue(any("counts" in problem for problem in problems), problems)
+
+    def test_a_negative_duration_is_refused_by_both(self) -> None:
+        record = self.empty_record()
+        record["duration"] = -1
+        self.assertTrue(schema_problems(record))
+        problems = run_records.validate_run_record(record)
+        self.assertTrue(problems)
+        self.assertTrue(any("duration" in problem for problem in problems), problems)
+
+    def test_a_non_integer_count_is_refused_by_both(self) -> None:
+        record = self.empty_record()
+        record["passed"] = "0"
+        self.assertTrue(schema_problems(record))
+        problems = run_records.validate_run_record(record)
+        self.assertTrue(problems)
+        self.assertTrue(any("passed" in problem for problem in problems), problems)
+
+
 class RunRecordReaderTests(unittest.TestCase):
     """The reader's own rules, beyond what the schema can express.
 

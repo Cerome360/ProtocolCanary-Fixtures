@@ -1,0 +1,68 @@
+# Protocol 28 / TransactionEnvelope: PATH_PAYMENT_STRICT_SEND with empty path.
+#
+# What this tests: a TransactionEnvelope V1 exercising OperationBody arm
+# PATH_PAYMENT_STRICT_SEND (OperationType 13) with distinct `sendAmount` and
+# `destMin` int64 fields, a classic destination, and an empty 0-Asset path.
+#
+# Why it matters: PathPaymentStrictSendOp has distinct fields and field order
+# compared to PathPaymentStrictReceiveOp (sendAmount before destination, destMin
+# after destination). Decoders must distinguish OperationType 13 and support an
+# empty path vector.
+#
+# Introduced in:
+# Protocol 12 (CAP-0024 Path Payment Strict Receive / Send split).
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". Generated using the official `stellar-xdr` 28.0.1 crate
+# (features base64, alloc, std) and rustc 1.99.1 (58cf8f9c3 2026-10-13) with
+# WriteXdr::to_xdr_base64(Limits::none()). The crate decodes and reproduces the
+# exact encoding byte-for-byte.
+#
+# Construction expression:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::PathPaymentStrictSend(PathPaymentStrictSendOp {
+#                   send_asset: Asset::Native,
+#                   send_amount: 8_000,
+#                   destination: MuxedAccount::Ed25519(Uint256([0x55; 32])),
+#                   dest_asset: Asset::CreditAlphanum4(AlphaNum4 {
+#                       asset_code: AssetCode4([b'E', b'U', b'R', 0]),
+#                       issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x12; 32]))),
+#                   }),
+#                   dest_min: 4_000,
+#                   path: vec![].try_into().unwrap(),
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Determinism:
+# Deterministic typed XDR construction. Synthetic structural values only; no
+# transaction validity, ledger state, or network execution is claimed.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+#             https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-types.x
+
+id = "p28-xdr-operation-path_payment_strict_send"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with a `PATH_PAYMENT_STRICT_SEND` operation carrying an empty path round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAANAAAAAAAAAAAAAB9AAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAUVVUgAAAAAAEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIAAAAAAAAPoAAAAAAAAAAAAAAAAWZmZmYAAABAZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg=="

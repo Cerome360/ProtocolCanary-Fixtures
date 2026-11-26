@@ -1,0 +1,76 @@
+# Protocol 28 / TransactionEnvelope V1: OperationBody::RESTORE_FOOTPRINT roundtrip.
+#
+# No pack envelope in Protocol 28 selects RESTORE_FOOTPRINT. Its body contains
+# only an ExtensionPoint (union discriminant); unlike EXTEND_FOOTPRINT_TTL there
+# is no additional payload field. This fixture uses ExtensionPoint V0 and
+# verifies the nested tag and the payload length separately from the extend arm.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `union TransactionEnvelope` — Stellar-transaction.x lines 1001-1010;
+#   * `struct TransactionV1Envelope` — Stellar-transaction.x lines 967-973;
+#   * `struct Transaction` — Stellar-transaction.x lines 932-965;
+#   * `struct Operation` — Stellar-transaction.x lines 653-719;
+#   * `enum OperationType` (RESTORE_FOOTPRINT = 26) — Stellar-transaction.x lines 480-508;
+#   * `struct RestoreFootprintOp` — Stellar-transaction.x lines 646-650;
+#   * `union ExtensionPoint` (V0 = 0) — Stellar-types.x lines 97-101.
+#
+# Why it matters: RESTORE_FOOTPRINT is a Soroban operation that restores
+# archived contract entries. A decoder that conflates RESTORE_FOOTPRINT with
+# EXTEND_FOOTPRINT_TTL, reads past the ExtensionPoint tag for a non-existent
+# extendTo field, or misidentifies the payload length would corrupt Soroban
+# restore operations. The distinct payload length (4 bytes shorter than the
+# extend arm) is the structural check this fixture provides.
+#
+# The payload was produced by a program that builds the typed value with the
+# official `stellar-xdr` 28.0.1 crate (features base64 and alloc — the crate
+# version Protocol-Canary's canary-xdr pins for Protocol 28) and serialises
+# it with WriteXdr::to_xdr_base64(Limits::none()), never hand-assembled.
+#
+# Generation expression, recorded verbatim:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::RestoreFootprint(RestoreFootprintOp {
+#                   ext: ExtensionPoint::V0,
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Crate: stellar-xdr 28.0.1; rustc 1.99.1 (58cf8f9c3 2026-10-13);
+# generated 2026-11-23 (UTC). The same crate round-tripped the value:
+# TransactionEnvelope::from_xdr_base64 followed by to_xdr reproduced the
+# 156-byte encoding exactly, byte for byte.
+#
+# Every payload byte is a synthetic structural value, not a capture of a
+# real network object. The 0x44-filled source account is not a real account,
+# the 0x66-filled hint and signature are not a valid signature, and the fee
+# and sequence number are arbitrary fixed numbers. The signature does not sign
+# anything: this is not a submitted transaction and was never observed on a
+# network.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-operation-restore_footprint"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "A Protocol 28 `TransactionEnvelope` V1 containing `RESTORE_FOOTPRINT` with ExtensionPoint V0 round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAAaAAAAAAAAAAAAAAABZmZmZgAAAEBmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"

@@ -238,5 +238,28 @@ class BadgeArgumentTests(unittest.TestCase):
                 self.assertIn("usage:", result.stderr)
                 self.assertEqual(self.readme_bytes(), before)
 
+    def test_check_with_unknown_flag_exits_2_and_leaves_readme_byte_identical(
+        self,
+    ) -> None:
+        # Argument parsing error must take precedence: README.md is never
+        # inspected or modified when an invalid argument combination is given.
+        before = self.readme_bytes()
+        result = self.run_cli("--check", "--nope")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
+        self.assertEqual(self.readme_bytes(), before)
+
+    def test_check_with_stray_positional_exits_2_and_leaves_readme_byte_identical(
+        self,
+    ) -> None:
+        # Positional arguments are not accepted; the error must surface before
+        # any file I/O.
+        before = self.readme_bytes()
+        result = self.run_cli("--check", "stray_arg")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
+        self.assertEqual(self.readme_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()

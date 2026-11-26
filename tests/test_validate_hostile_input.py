@@ -346,6 +346,92 @@ class HostileInputTests(unittest.TestCase):
             self.assertNotIn("charlie.toml", err)
 
 
+class PayloadConfinementTests(unittest.TestCase):
+    """A payload reference may not escape the selected pack root (issue #583).
+
+    ``input_file`` and ``expected_file`` are resolved relative to the fixture
+    file; the resolved target must stay inside the pack root the fixture was
+    loaded from. Each test builds a temporary pack so nothing is committed.
+    """
+
+    def run_pack(self, payload_ref: str, field: str = "input_file", extra=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "pack"
+            root.mkdir()
+            outside = Path(tmp) / "outside.bin"
+            outside.write_bytes(b"outside the pack")
+            if extra is not None:
+                extra(root, outside)
+            fixture = VALID_XDR + f"\n{field} = {payload_ref}\n"
+            write_fixtures(root, {"a.toml": fixture.encode("utf-8")})
+            return run_validator(root, "--format", "json")
+
+    def assert_outside(self, code, out, err, field: str) -> None:
+        self.assertEqual(code, 1, out + err)
+        self.assertEqual(err, "")
+        self.assertNotIn("Traceback", out)
+        document = json.loads(out)
+        messages = [e["message"] for e in document["errors"]]
+        self.assertTrue(
+            any(
+                f"field {field!r}" in m
+                and ("resolves outside" in m or "absolute paths are not allowed" in m)
+                for m in messages
+            ),
+            messages,
+        )
+        # The diagnostic identifies the offending fixture and field.
+        self.assertTrue(any(e["id"] == "p28-xdr-hostile-base" for e in document["errors"]))
+
+    def test_input_file_traversal_out_of_the_pack_root_is_rejected(self) -> None:
+        code, out, err = self.run_pack("'../outside.bin'")
+        self.assert_outside(code, out, err, "input_file")
+
+    def test_expected_file_traversal_out_of_the_pack_root_is_rejected(self) -> None:
+        code, out, err = self.run_pack("'../outside.bin'", field="expected_file")
+        self.assert_outside(code, out, err, "expected_file")
+
+    def test_an_absolute_input_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            absolute = Path(tmp) / "outside.bin"
+            absolute.write_bytes(b"outside the pack")
+            code, out, err = self.run_pack(f"'{absolute.as_posix()}'")
+        self.assert_outside(code, out, err, "input_file")
+
+    def test_a_symlink_escaping_the_pack_root_is_rejected(self) -> None:
+        def link(root: Path, outside: Path) -> None:
+            try:
+                (root / "payloads").mkdir()
+                (root / "payloads" / "link.bin").symlink_to(outside)
+            except (OSError, NotImplementedError) as error:
+                self.skipTest(f"this platform cannot create a symlink: {error}")
+
+        code, out, err = self.run_pack("'payloads/link.bin'", extra=link)
+        self.assert_outside(code, out, err, "input_file")
+
+    def test_a_valid_nested_relative_reference_still_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "pack"
+            write_fixtures(root, {"nested/payloads/input.bin": b"inside the pack"})
+            fixture = VALID_XDR.replace(
+                "p28-xdr-hostile-base", "p28-xdr-nested-payload"
+            ) + '\ninput_file = "payloads/input.bin"\n'
+            write_fixtures(root, {"nested/a.toml": fixture.encode("utf-8")})
+            code, out, err = run_validator(root)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("OK", out)
+        self.assertNotIn("Traceback", out + err)
+
+    def test_a_valid_reference_in_the_pack_root_still_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "pack"
+            write_fixtures(root, {"a.bin": b"inside the pack"})
+            fixture = VALID_XDR + '\nexpected_file = "a.bin"\n'
+            write_fixtures(root, {"a.toml": fixture.encode("utf-8")})
+            code, out, err = run_validator(root)
+        self.assertEqual(code, 0, out + err)
+
+
 @unittest.skipUnless(
     STELLAR_CANARY_BIN,
     "STELLAR_CANARY_BIN is not set; skipping the optional engine cross-check",

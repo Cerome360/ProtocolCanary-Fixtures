@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-set_trust_line_flags",
+  "fixtureSha256": "9eebb07fa414704945fdc18f43098ea2f4573a335cde6ec5a236538c2a7d1629",
+  "method": "structural",
+  "checkedAt": "2026-11-23T14:37:11Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "869fb8e63aa6d200dcb85afdcb681a5f2af4551f"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

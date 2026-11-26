@@ -310,6 +310,48 @@ class PackLimitsValidationTests(unittest.TestCase):
             f"Expected size error in {errors}",
         )
 
+    def test_oversized_description_reports_the_file_size_diagnostic(self) -> None:
+        # There is no separate field-length cap for `description`; oversized
+        # metadata is bounded by the per-file limit, and the diagnostic names
+        # the file, its size and the limit it crossed.
+        description = "d" * pack_limits.MAX_FILE_BYTES
+        content = make_valid_fixture("p28-xdr-huge-desc").replace(
+            'description = "sample fixture"',
+            f'description = "{description}"',
+        )
+        self.assertGreater(len(description.encode("utf-8")), 4096)
+
+        path = self.root / "xdr" / "huge-description.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8", newline="\n")
+        size = len(content.encode("utf-8"))
+        self.assertGreater(size, pack_limits.MAX_FILE_BYTES)
+
+        report = validate.validate_directory(self.root)
+        errors = [e.message for e in report.error_entries]
+        self.assertTrue(
+            any(
+                f"xdr/huge-description.toml is {size} bytes, over the "
+                f"{pack_limits.MAX_FILE_BYTES} byte limit for one pack file" in m
+                for m in errors
+            ),
+            f"Expected size error in {errors}",
+        )
+
+    def test_excessive_fixture_count_raises_a_pack_limit_error(self) -> None:
+        original = pack.MAX_ENTRIES
+        try:
+            pack.MAX_ENTRIES = 3
+            members = {f"xdr/f{index}.toml": b"" for index in range(4)}
+            with self.assertRaises(pack.PackError) as caught:
+                pack.check_limits(members, ["xdr"])
+        finally:
+            pack.MAX_ENTRIES = original
+        self.assertIn(
+            "the archive would have 5 entries, over the limit of 3",
+            str(caught.exception),
+        )
+
     def test_json_format_preserves_error_shape(self) -> None:
         bad_file = self.root / "xdr" / "bad.toml"
         bad_file.parent.mkdir(parents=True, exist_ok=True)

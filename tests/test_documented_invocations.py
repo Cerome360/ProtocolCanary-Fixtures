@@ -47,6 +47,31 @@ ROOT_PLACEHOLDERS = {
 }
 
 
+def _normalize_documentation(text: str) -> str:
+    r"""Join backslash-continued lines and strip comments for command extraction.
+
+    Shell-style backslash line continuations (``\`` at end of line) are joined
+    into a single logical line. Lines that are full comments (starting with
+    ``#``) are dropped, and inline ``#`` comments are stripped to end of line.
+    The result is one whitespace-normalized string in which multi-line commands
+    appear as single invocations.
+    """
+    lines = text.splitlines()
+    result: list[str] = []
+    for line in lines:
+        # Strip inline/full comments: everything from the first # to end of line.
+        hash_idx = line.find("#")
+        if hash_idx != -1:
+            line = line[:hash_idx]
+        stripped = line.strip()
+        if stripped.endswith("\\"):
+            # Backslash continuation: drop the trailing backslash.
+            result.append(stripped[:-1].strip())
+        elif stripped:
+            result.append(stripped)
+    return " ".join(result)
+
+
 def extract_commands() -> list[dict]:
     """Extract all stellar-canary check commands from documentation files."""
     commands = []
@@ -54,8 +79,9 @@ def extract_commands() -> list[dict]:
         if not doc_path.is_file():
             continue
         text = doc_path.read_text(encoding="utf-8")
+        normalized = _normalize_documentation(text)
         # Also search in fenced code blocks (```bash ... ```)
-        for match in COMMAND_PATTERN.finditer(text):
+        for match in COMMAND_PATTERN.finditer(normalized):
             dir_value = match.group("dir_space") or match.group("dir_eq")
             rest = match.group("rest") or ""
             full_cmd = f"stellar-canary check --fixtures-dir {dir_value} {rest}".strip()
@@ -313,6 +339,66 @@ class EngineInvocationTests(unittest.TestCase):
         """Commands without --fixtures-dir should be ignored by the extractor."""
         # This is tested implicitly: the regex requires --fixtures-dir
         self.assertTrue(True)
+
+
+class MultilineCommandTests(unittest.TestCase):
+    """Multi-line commands with backslash continuations are normalized to single invocations."""
+
+    def test_backslash_continuation_joins_into_one_command(self) -> None:
+        text = "stellar-canary check --fixtures-dir protocol-28 \\\n    --json\n"
+        normalized = _normalize_documentation(text)
+        self.assertEqual(
+            normalized,
+            "stellar-canary check --fixtures-dir protocol-28 --json",
+        )
+
+    def test_comment_interspersed_within_command_is_stripped(self) -> None:
+        text = """\
+stellar-canary check --fixtures-dir protocol-28 \\
+    # this is a comment
+    --json
+"""
+        normalized = _normalize_documentation(text)
+        self.assertNotIn("#", normalized)
+        self.assertIn("stellar-canary check --fixtures-dir protocol-28 --json", normalized)
+
+    def test_inline_comment_is_stripped(self) -> None:
+        text = "stellar-canary check --fixtures-dir protocol-28 --json # output as json\n"
+        normalized = _normalize_documentation(text)
+        self.assertNotIn("#", normalized)
+        self.assertIn("stellar-canary check --fixtures-dir protocol-28 --json", normalized)
+
+    def test_multiple_backslash_continuations_are_all_joined(self) -> None:
+        text = """\
+stellar-canary check --fixtures-dir protocol-28 \\
+    --protocol 28 \\
+    --json
+"""
+        normalized = _normalize_documentation(text)
+        self.assertEqual(
+            normalized,
+            "stellar-canary check --fixtures-dir protocol-28 --protocol 28 --json",
+        )
+
+    def test_full_line_comments_are_dropped(self) -> None:
+        text = """\
+# this whole line is a comment
+stellar-canary check --fixtures-dir protocol-28 --json
+"""
+        normalized = _normalize_documentation(text)
+        self.assertNotIn("#", normalized)
+        self.assertIn("stellar-canary check --fixtures-dir protocol-28 --json", normalized)
+
+    def test_normalized_multiline_matches_command_pattern(self) -> None:
+        """The normalized text is matched by COMMAND_PATTERN as a single command."""
+        text = """\
+stellar-canary check --fixtures-dir protocol-28 \\
+    --json
+"""
+        normalized = _normalize_documentation(text)
+        match = COMMAND_PATTERN.search(normalized)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group("dir_space"), "protocol-28")
 
 
 if __name__ == "__main__":

@@ -99,7 +99,10 @@ they change every ledger.
 
 ## What has not been done, on purpose
 
-No Protocol 29 fixture exists. Adding one needs, together: an authoritative
-source, a saved read-only capture made for that fixture, and a verification
-record with the fields in the CF-04 contract. `protocol-27/` stays empty for the
-same reason.
+At the time of this 2026-10-09 capture, no Protocol 29 fixture existed. One was
+added later:
+[`p29-rpc-version-info-protocol-29.toml`](../protocol-29/rpc/p29-rpc-version-info-protocol-29.toml)
+asserts `getVersionInfo` and does not change what this capture recorded.
+Adding another fixture still needs, together: an authoritative source, a saved
+read-only capture made for that fixture, and a verification record with the
+fields in the CF-04 contract. `protocol-27/` stays empty for the same reason.

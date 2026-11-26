@@ -1,0 +1,86 @@
+# Protocol 28 / TransactionEnvelope: CREATE_PASSIVE_SELL_OFFER with boundary values.
+#
+# What this tests:
+# A TransactionEnvelope V1 exercising OperationBody arm
+# CREATE_PASSIVE_SELL_OFFER (OperationType 4) with boundary-value fields:
+# `selling` ASSET_TYPE_CREDIT_ALPHANUM4 code "SELL" issuer [0x33;32],
+# `buying` ASSET_TYPE_CREDIT_ALPHANUM12 code "TWELVE_BYTES" issuer [0x44;32],
+# `amount` = i64::MAX (9223372036854775807), `Price { n: i32::MAX, d: i32::MIN }`.
+# No operation source account. The envelope is unsigned.
+#
+# Why it matters: CREATE_PASSIVE_SELL_OFFER (OperationType 4) uses a payload
+# order of `Asset selling, Asset buying, signed int64 amount, Price`.
+# The Protocol 28 pack had no envelope fixture selecting this operation type.
+# Boundary values confirm that the full int64 and int32 ranges are encoded
+# and decoded correctly, and that asset type arms are unambiguous.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `union TransactionEnvelope` — Stellar-transaction.x lines 1001-1010;
+#   * `struct CreatePassiveSellOfferOp` — Stellar-transaction.x lines 203-209;
+#   * `union Asset` — Stellar-types.x lines 51-67;
+#   * `struct Price` — Stellar-transaction.x lines 20-24;
+#   * `enum OperationType` (CREATE_PASSIVE_SELL_OFFER = 4) — Stellar-transaction.x lines 61-87.
+#
+# Expected result and where it comes from: kind = "roundtrip" means a decoder
+# must accept this envelope and re-encoding it must reproduce value_base64 byte
+# for byte, not merely an equal value. The payload was produced by a program
+# that builds the typed value with the official `stellar-xdr 28.0.1` crate
+# (features base64, alloc, std — the crate version Protocol-Canary's canary-xdr
+# pins for Protocol 28; rustc 1.91.0) and serialises it with
+# WriteXdr::to_xdr_base64(Limits::none()), never hand-assembled.
+# Generation expression, recorded verbatim:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0xaa; 32])),
+#           fee: 100,
+#           seq_num: SequenceNumber(1),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::CreatePassiveSellOffer(CreatePassiveSellOfferOp {
+#                   selling: Asset::CreditAlphanum4(AlphaNum4 {
+#                       asset_code: AssetCode4(*b"SELL"),
+#                       issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x33; 32]))),
+#                   }),
+#                   buying: Asset::CreditAlphanum12(AlphaNum12 {
+#                       asset_code: AssetCode12(*b"TWELVE_BYTES"),
+#                       issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x44; 32]))),
+#                   }),
+#                   amount: i64::MAX,
+#                   price: Price { n: i32::MAX, d: i32::MIN },
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: VecM::default(),
+#   })
+#
+# Independently confirmed against the read-only offer codec oracle test at
+# commit e9d098df7931a9b94b183c6af807a58336b7b322 (passive_boundary case).
+#
+# The same program asserted the crate's own round trip: from_xdr returned
+# Ok, the decoded value equals the built one, and re-encoding it reproduced
+# the encoding exactly.
+#
+# Is it deterministic: Yes. The generator uses no randomness, clock or
+# network; the same expression always yields the same bytes.
+#
+# Every byte is a synthetic structural value, not a capture of a real network
+# object: no real account key, contract id, signature or secret key appears,
+# and nothing here was observed on a network or accepted by a host.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-operation-create_passive_sell_offer"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with a `CREATE_PASSIVE_SELL_OFFER` operation at integer boundaries round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAACqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgAAAGQAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAAVNFTEwAAAAAMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMAAAACVFdFTFZFX0JZVEVTAAAAAEREREREREREREREREREREREREREREREREREREREREREf/////////9/////gAAAAAAAAAAAAAAA"

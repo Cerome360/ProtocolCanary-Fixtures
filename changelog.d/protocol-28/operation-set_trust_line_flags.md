@@ -1,0 +1,1 @@
+- Add Protocol 28 TransactionEnvelope fixture for SET_TRUST_LINE_FLAGS (OperationType 21): CreditAlphanum12 asset `TWELVE_BYTES`, synthetic trustor, clearFlags=0x12345678, setFlags=0xa5a5a5a5.

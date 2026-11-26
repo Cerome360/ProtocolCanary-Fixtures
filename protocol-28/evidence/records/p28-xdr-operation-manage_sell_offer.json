@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-manage_sell_offer",
+  "fixtureSha256": "b778aca58c666b5b175dd0a7b0bdf5d609d4ec7c3be5b76cfb21a2c9d3049741",
+  "method": "structural",
+  "checkedAt": "2026-11-23T10:26:26Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "1498e1c4a94745267fea149e28b09f0b2b084498"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

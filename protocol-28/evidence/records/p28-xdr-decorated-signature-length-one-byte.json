@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-decorated-signature-length-one-byte",
+  "fixtureSha256": "927191b281fb0ec705f04ac1aed8226d0592450106f7a95826d8e1bc61ce9e48",
+  "method": "structural",
+  "checkedAt": "2026-11-21T22:57:40Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "249b523f90d820917564550d6018c988ce4a8536"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

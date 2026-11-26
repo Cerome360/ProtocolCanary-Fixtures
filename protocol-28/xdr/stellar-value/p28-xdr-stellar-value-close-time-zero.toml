@@ -1,0 +1,55 @@
+# Protocol 28 / StellarValue: closeTime = 0 (unsigned uint64 minimum) roundtrip.
+#
+# The StellarValue struct carries closeTime as a TimePoint (typedef uint64).
+# The current Protocol 28 StellarValue fixtures use ordinary small timestamps.
+# This fixture uses closeTime = 0 (the minimum representable uint64 value) to
+# confirm the codec handles the zero endpoint of the full field range.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `struct StellarValue` — Stellar-ledger.x lines 26-57;
+#   * `typedef uint64 TimePoint` — Stellar-types.x line 14;
+#   * `enum StellarValueType` (STELLAR_VALUE_BASIC = 0) — Stellar-ledger.x lines 14-19;
+#   * `union StellarValueExt` — Stellar-ledger.x lines 41-56.
+#
+# Why it matters: a decoder that mis-reads the unsigned uint64 closeTime as a
+# signed type or truncates it at a smaller width would decode a closeTime of 0
+# as a non-zero value. This fixture proves that the zero endpoint encodes and
+# decodes faithfully.
+#
+# The payload was produced by a program that builds the typed value with the
+# official `stellar-xdr` 28.0.1 crate (features base64 and alloc — the crate
+# version Protocol-Canary's canary-xdr pins for Protocol 28) and serialises
+# it with WriteXdr::to_xdr_base64(Limits::none()), never hand-assembled.
+#
+# Generation expression, recorded verbatim:
+#
+#   StellarValue {
+#       tx_set_hash: Hash([0x11; 32]),
+#       close_time: TimePoint(0),
+#       upgrades: VecM::default(),
+#       ext: StellarValueExt::Basic,
+#   }.to_xdr_base64(Limits::none())
+#
+# Crate: stellar-xdr 28.0.1; rustc 1.99.1 (58cf8f9c3 2026-10-13);
+# generated 2026-11-23 (UTC). The same crate round-tripped the value:
+# StellarValue::from_xdr_base64 followed by to_xdr reproduced the
+# 48-byte encoding exactly, byte for byte.
+#
+# Every payload byte is a synthetic structural value, not a capture of a
+# real network object: the 0x11-filled txSetHash is not the hash of any real
+# transaction set, closeTime = 0 is a boundary test value and not an observed
+# ledger close time, and the upgrades vector is empty.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-ledger.x
+
+id = "p28-xdr-stellar-value-close-time-zero"
+protocol = 28
+surface = "xdr"
+category = "stellar-value"
+description = "StellarValue with closeTime = 0 (uint64 minimum) and STELLAR_VALUE_BASIC ext round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-ledger.x"
+
+type = "StellarValue"
+kind = "roundtrip"
+value_base64 = "EREREREREREREREREREREREREREREREREREREREREREAAAAAAAAAAAAAAAAAAAAA"

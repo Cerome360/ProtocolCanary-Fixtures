@@ -1,0 +1,1 @@
+- Add StellarValue fixtures for closeTime = 0 (uint64 minimum) and closeTime = 18446744073709551615 (uint64 maximum) with STELLAR_VALUE_BASIC ext.

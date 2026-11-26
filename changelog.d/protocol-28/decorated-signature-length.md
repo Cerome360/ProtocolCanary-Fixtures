@@ -1,0 +1,1 @@
+- Add Protocol 28 `DecoratedSignature` byte length fixtures covering empty (0-byte), 1-byte, and over-limit (65-byte) opaque bounds.

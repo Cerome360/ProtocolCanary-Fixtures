@@ -1,0 +1,1 @@
+- Add Protocol 28 LedgerEntry integer-boundary fixtures: `lastModifiedLedgerSeq` at `u32::MAX` and TrustLineEntry `balance`/`limit` at `i64::MIN`/`i64::MAX`.

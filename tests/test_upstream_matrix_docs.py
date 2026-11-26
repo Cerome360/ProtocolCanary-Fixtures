@@ -19,6 +19,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOC_PATH = REPO_ROOT / "docs" / "upstream-matrix.md"
 README_PATH = REPO_ROOT / "README.md"
 MATRIX_PATH = REPO_ROOT / "upstream-matrix.json"
+MATRIX_SCHEMA_PATH = REPO_ROOT / "schemas" / "upstream-matrix.json"
+
+# Issue #624 calls this file's counterpart `catalogue/index.json` and asks for
+# Active/Candidate/Deprecated status properties. Neither exists in this
+# repository: `upstream-matrix.json` is the protocol catalogue and the schema
+# has no status property. The docs record release state by which network
+# sections exist, so the three statuses are derived from that evidence rather
+# than invented as new fields.
+STATUS_RULES = ("Active", "Candidate", "Deprecated")
 
 PASSPHRASES = {
     "Testnet": "Test SDF Network ; September 2015",
@@ -66,6 +75,36 @@ def parse_sections(text: str) -> dict[tuple[str, str], list[dict]]:
         if row and protocol and network:
             sections.setdefault((protocol, network), []).append(row.groupdict())
     return sections
+
+
+def release_status(sections: dict[tuple[str, str], list[dict]], protocol: str) -> str:
+    """The documented release status for a protocol.
+
+    Mainnet coverage means Active, Testnet-only coverage means Candidate, and
+    no network section means Deprecated. This mirrors the page's own wording:
+    Protocol 28 and 29 are released to both networks, while Protocol 30 says
+    explicitly that Mainnet is not listed and no activation is claimed.
+    """
+    if sections.get((protocol, "Mainnet")):
+        return "Active"
+    if sections.get((protocol, "Testnet")):
+        return "Candidate"
+    return "Deprecated"
+
+
+def markdown_table_blocks(text: str) -> list[list[str]]:
+    """Contiguous runs of lines beginning with a pipe."""
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in text.split("\n"):
+        if line.startswith("|"):
+            current.append(line)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
 
 
 def satisfies(version: str, comparators: str) -> bool:
@@ -182,6 +221,79 @@ class UpstreamMatrixDocsTests(unittest.TestCase):
         readme = README_PATH.read_text(encoding="utf-8")
         self.assertIn("(docs/upstream-matrix.md)", readme)
         self.assertIn("(upstream-matrix.json)", readme)
+
+
+class CatalogueSynchronizationTests(unittest.TestCase):
+    """The docs, catalogue and schema must name the same protocols (issue #624)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.text = read_doc()
+        cls.sections = parse_sections(cls.text)
+        cls.matrix = json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+        cls.schema = json.loads(MATRIX_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    def test_the_catalogued_protocols_match_the_schema_and_the_page(self) -> None:
+        catalogue = set(self.matrix["protocols"])
+        schema_required = set(self.schema["properties"]["protocols"]["required"])
+        documented = {protocol for protocol, _ in self.sections}
+        self.assertEqual(catalogue, schema_required)
+        self.assertEqual(catalogue, documented)
+
+    def test_release_statuses_are_derived_from_documented_network_evidence(self) -> None:
+        statuses = {
+            protocol: release_status(self.sections, protocol)
+            for protocol in self.matrix["protocols"]
+        }
+        self.assertEqual(
+            statuses,
+            {"28": "Active", "29": "Active", "30": "Candidate"},
+        )
+        self.assertEqual(set(statuses.values()), {"Active", "Candidate"})
+        self.assertEqual(set(STATUS_RULES) - set(statuses.values()), {"Deprecated"})
+
+    def test_every_status_protocol_has_a_catalogue_and_schema_section(self) -> None:
+        schema_required = set(self.schema["properties"]["protocols"]["required"])
+        for protocol in self.matrix["protocols"]:
+            status = release_status(self.sections, protocol)
+            self.assertIn(status, STATUS_RULES)
+            self.assertIn(protocol, schema_required)
+            self.assertIn(protocol, self.matrix["protocols"])
+
+    def test_every_release_row_is_parsed_by_the_strict_pattern(self) -> None:
+        parsed = [
+            match
+            for line in self.text.split("\n")
+            if (match := ROW.match(line)) is not None
+        ]
+        self.assertEqual(len(parsed), sum(len(rows) for rows in self.sections.values()))
+        self.assertEqual(len(parsed), 20)
+
+    def test_every_markdown_table_has_a_header_separator_and_fixed_columns(self) -> None:
+        blocks = markdown_table_blocks(self.text)
+        self.assertTrue(blocks)
+        for block in blocks:
+            with self.subTest(header=block[0]):
+                self.assertGreaterEqual(len(block), 2)
+                columns = block[0].count("|")
+                self.assertGreaterEqual(columns, 2)
+                self.assertEqual(block[1], "|" + "---|" * (columns - 1))
+                for line in block:
+                    self.assertTrue(line.startswith("|"), line)
+                    self.assertEqual(line.count("|"), columns, line)
+                    self.assertEqual(line, line.rstrip(), "trailing whitespace")
+                    self.assertNotIn("\t", line)
+
+    def test_release_tables_use_the_documented_column_headings(self) -> None:
+        release_tables = [
+            block
+            for block in markdown_table_blocks(self.text)
+            if block[0] == "| Component | Release | Commit |"
+        ]
+        self.assertEqual(len(release_tables), 5)
+        for block in release_tables:
+            self.assertEqual(block[1], "|---|---|---|")
+            self.assertTrue(all(ROW.match(line) for line in block[2:]), block)
 
 
 if __name__ == "__main__":

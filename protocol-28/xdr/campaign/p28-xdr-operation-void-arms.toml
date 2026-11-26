@@ -1,0 +1,65 @@
+# Protocol 28 / TransactionEnvelope: INFLATION and END_SPONSORING_FUTURE_RESERVES void arms.
+#
+# What this tests: a TransactionEnvelope V1 exercising two void OperationBody
+# arms: INFLATION (OperationType 9) and END_SPONSORING_FUTURE_RESERVES
+# (OperationType 17) in a single transaction. Each operation consumes no
+# payload bytes after its discriminant.
+#
+# Why it matters: OperationBody defines two void arms whose variants carry no
+# payload: INFLATION (tag 9) and END_SPONSORING_FUTURE_RESERVES (tag 17). Decoders
+# and encoders must correctly handle both discriminants and confirm that neither
+# operation body consumes or expects additional payload bytes.
+#
+# Introduced in:
+# INFLATION in Protocol 1; END_SPONSORING_FUTURE_RESERVES in Protocol 14 (CAP-0033).
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". Generated using the official `stellar-xdr` 28.0.1 crate
+# (features base64, alloc, std) and rustc 1.99.1 (58cf8f9c3 2026-10-13) with
+# WriteXdr::to_xdr_base64(Limits::none()). The crate decodes and reproduces the
+# exact encoding byte-for-byte.
+#
+# Construction expression:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![
+#               Operation {
+#                   source_account: None,
+#                   body: OperationBody::Inflation,
+#               },
+#               Operation {
+#                   source_account: None,
+#                   body: OperationBody::EndSponsoringFutureReserves,
+#               },
+#           ].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Determinism:
+# Deterministic typed XDR construction. Synthetic structural values only; no
+# transaction validity, ledger state, or sponsorship relationship is claimed.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+#             https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-types.x
+
+id = "p28-xdr-operation-void-arms"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with `INFLATION` and `END_SPONSORING_FUTURE_RESERVES` void operation arms round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAgAAAAAAAAAJAAAAAAAAABEAAAAAAAAAAWZmZmYAAABAZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg=="

@@ -1,0 +1,1 @@
+- Add Protocol 28 TransactionEnvelope fixture for CLAWBACK (OperationType 19): CreditAlphanum4 asset, classic Ed25519 from account, amount 17.

@@ -518,6 +518,20 @@ class TestGitDiffHelper(unittest.TestCase):
                 get_git_diff_files("HEAD")
             self.assertIn("git executable not found", str(ctx.exception))
 
+    def test_get_git_diff_files_subprocess_failure_raises_with_the_git_error(self) -> None:
+        mock_res = MagicMock(returncode=128, stderr="fatal: bad object HEAD")
+        with patch("subprocess.run", return_value=mock_res):
+            with self.assertRaises(RuntimeError) as ctx:
+                get_git_diff_files("invalid_ref")
+        message = str(ctx.exception)
+        self.assertIn("invalid_ref", message)
+        self.assertIn("fatal: bad object HEAD", message)
+
+    def test_get_git_diff_files_os_error_is_not_swallowed(self) -> None:
+        with patch("subprocess.run", side_effect=PermissionError("git is not executable")):
+            with self.assertRaises(PermissionError):
+                get_git_diff_files("HEAD")
+
     def test_get_git_diff_files_all_fail(self) -> None:
         mock_res = MagicMock(returncode=1, stderr="fatal: bad revision")
         with patch("subprocess.run", return_value=mock_res):
@@ -614,6 +628,32 @@ class TestCliInterface(unittest.TestCase):
                 with patch("sys.stdout", stdout):
                     code = main(["--base", "HEAD"])
         self.assertEqual(code, 0)
+
+    def test_cli_with_malformed_event_json_is_reported_gracefully(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            event_file = Path(tmpdir) / "event.json"
+            event_file.write_text('{"pull_request": {"labels": [', encoding="utf-8")
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                code = main(
+                    ["protocol-28/xdr/test.toml", "--event-path", str(event_file)]
+                )
+            # The unparseable payload contributes no labels rather than
+            # aborting the check, so the normal changelog diagnostic still runs.
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR: [F-055]", stderr.getvalue())
+            self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_with_malformed_github_event_path_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            event_file = Path(tmpdir) / "event.json"
+            event_file.write_text("not json at all", encoding="utf-8")
+            stderr = io.StringIO()
+            with patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event_file)}):
+                with patch("sys.stderr", stderr):
+                    code = main(["protocol-28/xdr/test.toml"])
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR: [F-055]", stderr.getvalue())
 
     def test_cli_with_base_flag_git_error(self) -> None:
         stderr = io.StringIO()

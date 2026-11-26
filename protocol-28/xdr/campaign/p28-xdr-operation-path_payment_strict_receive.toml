@@ -1,0 +1,89 @@
+# Protocol 28 / TransactionEnvelope: PATH_PAYMENT_STRICT_RECEIVE with five-asset path.
+#
+# What this tests: a TransactionEnvelope V1 exercising OperationBody arm
+# PATH_PAYMENT_STRICT_RECEIVE (OperationType 2) with distinct `sendMax` and
+# `destAmount` int64 fields, a classic destination, and a maximum 5-Asset path.
+#
+# Why it matters: PathPaymentStrictReceiveOp has distinct fields from
+# PathPaymentStrictSendOp (sendMax before destination, destAmount after destination)
+# and a bounded `path<5>`. Decoders and encoders must correctly handle the field
+# ordering and the 5-element asset path boundary.
+#
+# Introduced in:
+# Protocol 12 (CAP-0024 Path Payment Strict Receive / Send split).
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". Generated using the official `stellar-xdr` 28.0.1 crate
+# (features base64, alloc, std) and rustc 1.99.1 (58cf8f9c3 2026-10-13) with
+# WriteXdr::to_xdr_base64(Limits::none()). The crate decodes and reproduces the
+# exact encoding byte-for-byte.
+#
+# Construction expression:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::PathPaymentStrictReceive(PathPaymentStrictReceiveOp {
+#                   send_asset: Asset::Native,
+#                   send_max: 10_000,
+#                   destination: MuxedAccount::Ed25519(Uint256([0x55; 32])),
+#                   dest_asset: Asset::CreditAlphanum4(AlphaNum4 {
+#                       asset_code: AssetCode4([b'U', b'S', b'D', 0]),
+#                       issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x11; 32]))),
+#                   }),
+#                   dest_amount: 5_000,
+#                   path: vec![
+#                       Asset::CreditAlphanum4(AlphaNum4 {
+#                           asset_code: AssetCode4([b'A', b'S', b'T', b'1']),
+#                           issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x21; 32]))),
+#                       }),
+#                       Asset::CreditAlphanum4(AlphaNum4 {
+#                           asset_code: AssetCode4([b'A', b'S', b'T', b'2']),
+#                           issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x22; 32]))),
+#                       }),
+#                       Asset::CreditAlphanum4(AlphaNum4 {
+#                           asset_code: AssetCode4([b'A', b'S', b'T', b'3']),
+#                           issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x23; 32]))),
+#                       }),
+#                       Asset::CreditAlphanum4(AlphaNum4 {
+#                           asset_code: AssetCode4([b'A', b'S', b'T', b'4']),
+#                           issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x24; 32]))),
+#                       }),
+#                       Asset::CreditAlphanum4(AlphaNum4 {
+#                           asset_code: AssetCode4([b'A', b'S', b'T', b'5']),
+#                           issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x25; 32]))),
+#                       }),
+#                   ].try_into().unwrap(),
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Determinism:
+# Deterministic typed XDR construction. Synthetic structural values only; no
+# transaction validity, ledger state, or network execution is claimed.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+#             https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-types.x
+
+id = "p28-xdr-operation-path_payment_strict_receive"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with a `PATH_PAYMENT_STRICT_RECEIVE` operation carrying a maximum five-Asset path round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAACAAAAAAAAAAAAACcQAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAVVTRAAAAAAAEREREREREREREREREREREREREREREREREREREREREREAAAAAAAATiAAAAAUAAAABQVNUMQAAAAAhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAFBU1QyAAAAACIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAUFTVDMAAAAAIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMAAAABQVNUNAAAAAAkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJAAAAAFBU1Q1AAAAACUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlAAAAAAAAAAFmZmZmAAAAQGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="

@@ -1,0 +1,36 @@
+# Protocol 28 / TransactionEnvelope: DecoratedSignature signature over limit (65 bytes).
+#
+# What this tests: a decoder must reject a DecoratedSignature whose signature
+# length prefix declares 65 bytes, exceeding the `opaque signature<64>` bound.
+#
+# Why it matters: RFC 4506 and Stellar XDR define `typedef opaque Signature<64>`.
+# An implementation that accepts a length prefix greater than 64 violates the
+# bounded opaque type contract.
+#
+# Mutation parent and rule:
+# Derived from mutation parent `maximum`, the baseline fixture in
+# `protocol-28/xdr/transaction-envelope/p28-xdr-transaction-envelope-v1-roundtrip.toml`.
+# At byte offset 132 (the 4-byte length prefix of `DecoratedSignature.signature`),
+# the original 64-byte word (0x00000040) is replaced with 65 (0x00000041).
+#
+# Expected result and where it comes from:
+# kind = "decode-failure". Checked with the official `stellar-xdr` 28.0.1 crate
+# (rustc 1.99.1): TransactionEnvelope::from_xdr returns Err(LengthExceedsMax).
+# The independent codec in tests/xdr_codec.py also rejects it with
+# "length prefix 65 exceeds maximum allowed 64".
+#
+# Determinism:
+# Deterministic single four-byte word mutation of the crate-produced baseline.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-decorated-signature-length-over-limit"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 where the `DecoratedSignature` signature length prefix is 65 (one above the 64-byte bound) is rejected"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "decode-failure"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAAAAAAAAAAfQAAAAAAAAAAFmZmZmAAAAQWZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="

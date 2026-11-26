@@ -1,0 +1,1 @@
+- Add a Protocol 28 `MANAGE_BUY_OFFER` V1 TransactionEnvelope fixture with boundary values (`i64::MIN` buyAmount and offerID, `Price { n: -1, d: 1 }`).

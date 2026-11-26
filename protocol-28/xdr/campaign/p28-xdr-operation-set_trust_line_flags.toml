@@ -1,0 +1,67 @@
+# Protocol 28 / TransactionEnvelope: a SET_TRUST_LINE_FLAGS operation with CreditAlphanum12 asset, synthetic trustor, and exact flag values round-trips.
+#
+# What this tests:
+# Embeds one SET_TRUST_LINE_FLAGS operation into a Protocol 28 TransactionEnvelope V1.
+# OperationBody::SetTrustLineFlags (OperationType 21) carries an AccountID trustor,
+# an Asset (not TrustLineAsset), a uint32 clearFlags, and a uint32 setFlags — in that
+# pinned order. The fixture verifies the discriminant, field order, CreditAlphanum12
+# code and padding, and both flag uint32 values.
+#
+# Why it matters:
+# No pack envelope previously selected SET_TRUST_LINE_FLAGS (OperationType 21). A
+# decoder that mistakes the tag, misorders trustor/asset/clearFlags/setFlags, truncates
+# the 12-byte asset code padding, or interprets the flags as signed would fail.
+#
+# Construction expression:
+#
+#   let credit12_operation = Operation {
+#       source_account: None,
+#       body: OperationBody::SetTrustLineFlags(SetTrustLineFlagsOp {
+#           trustor: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x44; 32]))),
+#           asset: Asset::CreditAlphanum12(AlphaNum12 {
+#               asset_code: AssetCode12(*b"TWELVE_BYTES"),
+#               issuer: AccountId(PublicKey::PublicKeyTypeEd25519(Uint256([0x55; 32]))),
+#           }),
+#           clear_flags: 0x12345678,
+#           set_flags: 0xa5a5a5a5,
+#       }),
+#   };
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0xaa; 32])),
+#           fee: 100,
+#           seq_num: SequenceNumber(1),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![credit12_operation],
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: Default::default(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Generated with official stellar-xdr = 28.0.1 (features base64, alloc, std),
+# rustc 1.99.0, WriteXdr::to_xdr_base64(Limits::none()).
+# Pinned schema: stellar/stellar-xdr commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694.
+#
+# The same crate round-tripped the value: TransactionEnvelope::from_xdr_base64
+# followed by to_xdr reproduced the 176-byte encoding exactly, byte for byte.
+#
+# Is it deterministic: Yes. No randomness, clock or network involved.
+#
+# Synthetic structural values: synthetic keys and flag values prove only XDR structure.
+# The fixture does not establish that a trustline exists, flags are semantically allowed,
+# the transaction passes validity checks, or the operation is authorized or ledger accepted.
+# Asset is a pinned Asset (not TrustLineAsset); a liquidity-pool-share arm is not valid here.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-operation-set_trust_line_flags"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "A `TransactionEnvelope` V1 with a `SET_TRUST_LINE_FLAGS` operation (CreditAlphanum12 asset `TWELVE_BYTES`, synthetic trustor, clearFlags=0x12345678, setFlags=0xa5a5a5a5) round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAACqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgAAAGQAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAVAAAAAEREREREREREREREREREREREREREREREREREREREREREAAAAAlRXRUxWRV9CWVRFUwAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVRI0VnilpaWlAAAAAAAAAAA="

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -58,6 +59,32 @@ class Protocol29VersionInfoFixtureTests(unittest.TestCase):
             )
         self.assertEqual(run.returncode, 1)
         self.assertIn("unexpected_field", run.stderr)
+
+
+    def test_commit_hash_in_testnet_capture_is_valid_40_hex(self) -> None:
+        capture = json.loads(
+            (REPO_ROOT / "protocol-29" / "evidence" / "testnet" / "get-version-info.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        sha = capture["response"]["result"]["commitHash"]
+        self.assertRegex(sha, r"^[0-9a-f]{40}$")
+
+    def test_malformed_commit_hashes_are_rejected(self) -> None:
+        for bad in ("0" * 39, "0" * 41, "G" * 40, "055dc9c7a9a9e038c6807a555c09bd94b85c9e2", ""):
+            with self.subTest(hash=bad):
+                self.assertIsNone(re.fullmatch(r"[0-9a-f]{40}", bad))
+
+    def test_valid_version_info_object_passes(self) -> None:
+        valid = {
+            "version": "29.0.1-055dc9c7a9a9e038c6807a555c09bd94b85c9e2c",
+            "commitHash": "055dc9c7a9a9e038c6807a555c09bd94b85c9e2c",
+            "buildTimestamp": "2026-10-13T09:48:37",
+            "captiveCoreVersion": "stellar-core 29.0.0 (4eb83337380a29ad0907f4e32196ce97b8dc7649)",
+            "protocolVersion": 29,
+        }
+        self.assertRegex(valid["commitHash"], r"^[0-9a-f]{40}$")
+        self.assertIsInstance(valid["protocolVersion"], int)
 
 
 if __name__ == "__main__":

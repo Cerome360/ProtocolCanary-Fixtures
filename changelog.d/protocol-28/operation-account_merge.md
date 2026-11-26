@@ -1,0 +1,1 @@
+- Add a Protocol 28 TransactionEnvelope V1 fixture covering the ACCOUNT_MERGE operation arm with a classic Ed25519 destination.

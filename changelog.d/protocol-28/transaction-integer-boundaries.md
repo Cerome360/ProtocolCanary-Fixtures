@@ -1,0 +1,1 @@
+- Add Protocol 28 TransactionEnvelope V1 fixtures for seqNum = i64::MIN with fee = 0, seqNum = i64::MAX with fee = u32::MAX, and a fee-bump fixture with fee = i64::MAX.

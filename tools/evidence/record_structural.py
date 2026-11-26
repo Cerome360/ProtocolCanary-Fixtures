@@ -79,26 +79,39 @@ def sha256_of(path: Path) -> str:
         raise RecordError(f"could not read {path}: {error}") from None
 
 
-def git_revision(repo_root: Path) -> str:
-    """The commit the validator was read from, or ``unknown``.
-
-    The version of a verifier has to identify the exact code that did the
-    check. For the validator that is the commit it was read from; a checkout
-    without git (a source archive, a vendored copy) cannot answer that, and
-    says so rather than guessing.
-    """
+def _git_output(repo_root: Path, *args: str) -> str | None:
+    """The stdout of a git command, or ``None`` when it could not be run."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            ["git", "-C", str(repo_root), *args],
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def git_revision(repo_root: Path) -> str:
+    """The clean commit the validator was read from, or ``unknown``.
+
+    The version of a verifier has to identify the exact code that did the
+    check. For the validator that is the commit it was read from; a checkout
+    without git (a source archive, a vendored copy) cannot answer that, and
+    says so rather than guessing. A checkout with uncommitted worktree or
+    index changes cannot answer it either, because the code that ran is not
+    the commit alone; recording the clean SHA there would falsely attribute
+    the evidence to a commit that does not contain the change (issue #571).
+    """
+    revision = (_git_output(repo_root, "rev-parse", "HEAD") or "").strip()
+    if len(revision) != 40:
         return "unknown"
-    revision = result.stdout.strip()
-    if result.returncode != 0 or len(revision) != 40:
+    status = _git_output(repo_root, "status", "--porcelain")
+    if status is None or status.strip():
         return "unknown"
     return revision
 

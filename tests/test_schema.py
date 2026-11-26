@@ -20,6 +20,7 @@ from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schemas" / "validator-report-v1.schema.json"
+FIXTURE_SCHEMA_PATH = REPO_ROOT / "schemas" / "fixture-v1.schema.json"
 VALIDATE_PATH = REPO_ROOT / "tools" / "validate" / "validate.py"
 SCHEMA_LITE_PATH = REPO_ROOT / "tools" / "validate" / "jsonschema_lite.py"
 
@@ -33,6 +34,40 @@ _spec.loader.exec_module(jsonschema_lite)
 
 def load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def load_fixture_schema() -> dict:
+    return json.loads(FIXTURE_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def fixture_schema_errors(fixture: object) -> list[str]:
+    """Check a fixture against the parts of fixture-v1 jsonschema_lite supports.
+
+    fixture-v1's per-surface conditionals use ``if``/``then``, which
+    jsonschema_lite deliberately does not implement, so they are enforced by
+    tools/validate/validate.py instead. The top-level rules this function
+    checks -- required keys, a closed property set, and each declared
+    property's type/length/pattern/enum/range -- are read from the schema
+    itself rather than duplicated here.
+    """
+    schema = load_fixture_schema()
+    if not isinstance(fixture, dict):
+        return ["a fixture must be a JSON object"]
+
+    errors: list[str] = []
+    required = schema.get("required", [])
+    for field in required:
+        if field not in fixture:
+            errors.append(f"missing required property {field!r}")
+
+    properties = schema.get("properties", {})
+    for field, value in fixture.items():
+        if field not in properties:
+            errors.append(f"unknown property {field!r}")
+            continue
+        for problem in jsonschema_lite.validate(value, properties[field]):
+            errors.append(f"property {field!r}: {problem}")
+    return errors
 
 
 def run_validator_json(root: Path | None = None) -> dict:
@@ -122,6 +157,98 @@ class SchemaFileTests(unittest.TestCase):
         )
         for field in ("valid", "errors", "warnings", "summary"):
             self.assertIn(field, schema["properties"])
+
+
+class MinimalFixtureSchemaTests(unittest.TestCase):
+    """A fixture may carry only the mandatory fields and nothing else."""
+
+    MINIMAL = {
+        "id": "p28-xdr-minimal",
+        "protocol": 28,
+        "surface": "xdr",
+        "category": "cap-0083",
+        "description": "minimal fixture",
+        "source_reference": "CAP-0083",
+    }
+
+    def test_the_fixture_schema_is_present_and_declares_its_requirements(self) -> None:
+        schema = load_fixture_schema()
+        self.assertEqual(schema["type"], "object")
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(
+            set(schema["required"]),
+            {
+                "id",
+                "protocol",
+                "surface",
+                "category",
+                "description",
+                "source_reference",
+            },
+        )
+
+    def test_a_minimal_fixture_validates(self) -> None:
+        self.assertEqual(fixture_schema_errors(dict(self.MINIMAL)), [])
+
+    def test_optional_collections_can_be_omitted(self) -> None:
+        # required_capabilities is an array; tags, telemetry and dependencies
+        # are not part of fixture-v1 at all. Omitting all of them must leave a
+        # valid fixture, not one that needs empty placeholders.
+        self.assertNotIn("required_capabilities", self.MINIMAL)
+        for field in ("required_capabilities", "tags", "telemetry", "dependencies"):
+            with self.subTest(field=field):
+                self.assertNotIn(field, self.MINIMAL)
+        self.assertEqual(fixture_schema_errors(dict(self.MINIMAL)), [])
+
+    def test_an_optional_capability_array_may_be_present(self) -> None:
+        fixture = dict(self.MINIMAL, required_capabilities=["rpc-client"])
+        self.assertEqual(fixture_schema_errors(fixture), [])
+
+    def test_an_unknown_capability_is_rejected(self) -> None:
+        fixture = dict(self.MINIMAL, required_capabilities=["not-a-capability"])
+        problems = fixture_schema_errors(fixture)
+        self.assertTrue(problems)
+        self.assertTrue(any("required_capabilities" in problem for problem in problems))
+
+    def test_omitting_each_mandatory_field_is_rejected(self) -> None:
+        for field in load_fixture_schema()["required"]:
+            with self.subTest(field=field):
+                fixture = dict(self.MINIMAL)
+                del fixture[field]
+                problems = fixture_schema_errors(fixture)
+                self.assertTrue(problems)
+                self.assertTrue(
+                    any(field in problem for problem in problems), problems
+                )
+
+    def test_omitting_the_id_names_the_missing_field(self) -> None:
+        fixture = dict(self.MINIMAL)
+        del fixture["id"]
+        problems = fixture_schema_errors(fixture)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("missing required property 'id'", problems[0])
+
+    def test_an_empty_id_is_rejected_descriptively(self) -> None:
+        problems = fixture_schema_errors(dict(self.MINIMAL, id=""))
+        self.assertTrue(problems)
+        self.assertTrue(any("property 'id'" in problem for problem in problems))
+
+    def test_a_malformed_id_is_rejected(self) -> None:
+        for bad in ("P28-UPPER", "has space", "-leading-dash"):
+            with self.subTest(id=bad):
+                problems = fixture_schema_errors(dict(self.MINIMAL, id=bad))
+                self.assertTrue(problems)
+                self.assertTrue(any("'id'" in problem for problem in problems))
+
+    def test_a_wrong_protocol_type_is_rejected(self) -> None:
+        problems = fixture_schema_errors(dict(self.MINIMAL, protocol="28"))
+        self.assertTrue(problems)
+        self.assertTrue(any("property 'protocol'" in problem for problem in problems))
+
+    def test_an_unknown_top_level_field_is_rejected(self) -> None:
+        problems = fixture_schema_errors(dict(self.MINIMAL, surprise=True))
+        self.assertTrue(problems)
+        self.assertTrue(any("unknown property 'surprise'" in problem for problem in problems))
 
 
 class SchemaValidationTests(unittest.TestCase):

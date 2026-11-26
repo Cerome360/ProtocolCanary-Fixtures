@@ -562,6 +562,50 @@ class EmptyPackTests(unittest.TestCase):
         )
 
 
+class ZeroFixtureCoverageTests(unittest.TestCase):
+    """A protocol with zero fixtures shows 0.0% coverage without division-by-zero."""
+
+    def test_zero_fixture_pack_shows_zero_coverage_without_crash(self) -> None:
+        """Zero registered fixtures means 0.0% coverage; no ZeroDivisionError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = Path(tmp) / "protocol-99"
+            pack.mkdir()
+            # 0 valid / 0 files must not raise ZeroDivisionError.
+            report = coverage_report.build_report([pack])
+            text = coverage_report.render_text(report)
+
+        self.assertEqual(report["totals"], {"files": 0, "valid": 0, "invalid": 0})
+        self.assertEqual(report["packs"], [{"name": "protocol-99", "files": 0, "valid": 0, "invalid": 0}])
+        # Every capability value is zero: 0.0% coverage everywhere.
+        for name, values in report["capabilities"].items():
+            self.assertTrue(values, name)
+            self.assertEqual(set(values.values()), {0}, name)
+        # Text table is well-formed, no crash.
+        self.assertIn("Fixture coverage report: 0 fixture file(s), 0 valid, 0 invalid\n", text)
+        self.assertIn("  no fixture\n", text)
+
+    def test_zero_fixture_text_columns_stay_aligned(self) -> None:
+        """Zero-count lines keep aligned columns in the text table."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = Path(tmp) / "protocol-99"
+            pack.mkdir()
+            report = coverage_report.build_report([pack])
+        text = coverage_report.render_text(report)
+        sections: dict[str, list[int]] = {}
+        current: str | None = None
+        for line in text.splitlines():
+            if line and not line.startswith(" "):
+                current = line
+                sections.setdefault(current, [])
+                continue
+            match = re.match(r"  (\S+)(\s+)(\d+)(  no fixture)?$", line)
+            if match is not None and current is not None:
+                sections[current].append(match.start(3))
+        for title, positions in sections.items():
+            if len(positions) > 1:
+                self.assertEqual(len(set(positions)), 1, f"{title}: {positions}")
+
+
 class InvalidFixtureTests(unittest.TestCase):
     def test_a_rejected_fixture_is_counted_as_invalid_not_crashed_on(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

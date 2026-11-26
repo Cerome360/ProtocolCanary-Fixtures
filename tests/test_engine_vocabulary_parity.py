@@ -416,5 +416,70 @@ class DriftIsDetectedTests(unittest.TestCase):
         self.assertIn("missing", "; ".join(difference["rpcMethods"]))
 
 
+class DuplicateGlossaryTermTests(unittest.TestCase):
+    """Issue #592: duplicate glossary terms are refused, by glossary key.
+
+    ``tests/fixtures/engine-vocabulary.json`` is the glossary the validator's
+    accepted vocabulary is read from. A term listed twice makes the glossary
+    ambiguous -- two entries would share one name -- so ``load_vector`` must
+    refuse it and name the glossary that repeats a term.
+    """
+
+    def setUp(self) -> None:
+        self.vector = load_vector(VECTOR_PATH)
+
+    def load(self, vector: dict) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "engine-vocabulary.json"
+            path.write_text(json.dumps(vector), encoding="utf-8")
+            return load_vector(path)
+
+    def assert_duplicate_is_reported(self, glossary: str, vector: dict) -> str:
+        with self.assertRaises(VectorError) as caught:
+            self.load(vector)
+        message = str(caught.exception)
+        self.assertIn(glossary, message, "the error must name the glossary key")
+        self.assertIn("repeats", message)
+        return message
+
+    def test_duplicate_rpc_method_is_reported(self) -> None:
+        broken = json.loads(json.dumps(self.vector))
+        duplicated = broken["rpcMethods"][0]
+        broken["rpcMethods"].append(duplicated)
+        self.assert_duplicate_is_reported("rpcMethods", broken)
+
+    def test_duplicate_xdr_kind_is_reported(self) -> None:
+        broken = json.loads(json.dumps(self.vector))
+        broken["xdrKinds"].append(broken["xdrKinds"][-1])
+        self.assert_duplicate_is_reported("xdrKinds", broken)
+
+    def test_duplicate_surface_is_reported(self) -> None:
+        broken = json.loads(json.dumps(self.vector))
+        broken["surfaces"].append(broken["surfaces"][0])
+        self.assert_duplicate_is_reported("surfaces", broken)
+
+    def test_duplicate_soroban_expect_kind_is_reported(self) -> None:
+        broken = json.loads(json.dumps(self.vector))
+        broken["sorobanExpectKinds"].append(broken["sorobanExpectKinds"][-1])
+        self.assert_duplicate_is_reported("sorobanExpectKinds", broken)
+
+    def test_the_shipped_glossary_has_no_duplicate_terms(self) -> None:
+        for key, names in accepted_names(self.vector).items():
+            with self.subTest(glossary=key):
+                self.assertEqual(
+                    len(set(names)),
+                    len(names),
+                    f"the shipped glossary repeats a {key} term",
+                )
+
+    def test_the_validator_vocabularies_are_duplicate_free(self) -> None:
+        for key, constant, _surface, _path in VOCABULARIES:
+            with self.subTest(glossary=key):
+                names = list(getattr(validate, constant))
+                self.assertEqual(len(set(names)), len(names))
+        surfaces = list(getattr(validate, SURFACES_CONSTANT))
+        self.assertEqual(len(set(surfaces)), len(surfaces))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,70 @@
+# Protocol 28 / TransactionEnvelope: MANAGE_DATA operation with maximum-size data name and value.
+#
+# ManageDataOp contains a bounded string64 and a DataValue pointer.
+# Existing codec unit tests check pointer parsing, but the pack has no envelope
+# for the present-pointer case with a maximum-size opaque value.
+#
+# Fixture case: Embed one MANAGE_DATA operation with a maximum-length 64-byte data
+# name and a present DataValue pointer containing a 64-byte opaque value.
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#   * `struct ManageDataOp` — Stellar-transaction.x lines 525-529
+#   * `typedef string string64<64>` — Stellar-types.x line 67
+#   * `typedef opaque DataValue<64>` — Stellar-types.x line 70
+#   * `union OperationBody` — Stellar-transaction.x lines 653-719 (MANAGE_DATA = 10)
+#   * `struct Operation` — Stellar-transaction.x lines 721-725
+#   * `struct Transaction` — Stellar-transaction.x lines 932-965
+#   * `struct TransactionV1Envelope` — Stellar-transaction.x lines 967-973
+#   * `union TransactionEnvelope` — Stellar-transaction.x lines 1001-1010
+#
+# Why it matters: a decoder that fails to parse optional pointers, misplaces
+# boundary values, or miscalculates 4-byte XDR string/opaque padding would fail
+# on valid MANAGE_DATA operations. This fixture establishes byte-for-byte roundtrip
+# conformance for maximum-size dataName (64 bytes) and present dataValue (64 bytes).
+#
+# Generation expression, recorded verbatim:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::ManageData(ManageDataOp {
+#                   data_name: String64(StringM::try_from("n".repeat(64)).unwrap()),
+#                   data_value: Some(DataValue(BytesM::try_from((0u8..64).collect::<Vec<_>>()).unwrap())),
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Crate: official `stellar-xdr` 28.0.1 (features base64, alloc — the crate version
+# Protocol-Canary's canary-xdr pins for Protocol 28); rustc 1.99.0 (b940084d7 2026-09-28);
+# generated 2026-11-22 (UTC). Deterministic.
+#
+# Every payload byte is a synthetic structural value, not a capture of a real network
+# object: no real account key, contract id, signature, secret key, or ledger data
+# entry is represented. This does not demonstrate network acceptance, signature
+# validity, deployed contract state or host behavior. Nothing here was observed on
+# a network or submitted to a node.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-operation-manage_data"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "A `TransactionEnvelope` containing a `MANAGE_DATA` operation with maximum-length 64-byte name and present 64-byte value round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAAKAAAAQG5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4AAAABAAAAQAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8AAAAAAAAAAWZmZmYAAABAZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg=="

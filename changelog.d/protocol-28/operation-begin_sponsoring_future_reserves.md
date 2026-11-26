@@ -1,0 +1,1 @@
+- Add a Protocol 28 TransactionEnvelope fixture embedding a BEGIN_SPONSORING_FUTURE_RESERVES operation with a synthetic AccountID sponsored_id.

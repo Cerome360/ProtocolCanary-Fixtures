@@ -1,0 +1,77 @@
+# Protocol 28 / TransactionEnvelope: a Payment with a muxed transaction-level source round-trips.
+#
+# What this tests:
+# An ENVELOPE_TYPE_TX envelope whose `Transaction.sourceAccount` is a
+# `MuxedAccount` of type KEY_TYPE_MUXED_ED25519 (0x100) with
+# id 0x0102030405060708 and ed25519 key [0x11;32].
+# The single Payment operation uses a classic Ed25519 destination [0x22;32]
+# and leaves `Operation.sourceAccount` absent.
+#
+# Why it matters: every other Protocol 28 envelope fixture uses a classic
+# Ed25519 account as the transaction-level source, so the muxed arm on
+# `Transaction.sourceAccount` and the full-envelope roundtrip with that arm
+# were not exercised. The envelope is structural and unsigned (zero signatures).
+#
+# Definitions (stellar/stellar-xdr at tag v28.0, commit 9c9c145953e80990d6ff1ae3a6a973a0ce6d0694):
+#
+#   * `union TransactionEnvelope` — Stellar-transaction.x lines 1001-1010;
+#   * `struct Transaction` (`MuxedAccount sourceAccount;` at line 936) — Stellar-transaction.x lines 934-949;
+#   * `union MuxedAccount` — Stellar-transaction.x lines 20-31;
+#   * `struct PaymentOp` — Stellar-transaction.x lines 92-97;
+#   * `enum CryptoKeyType` (KEY_TYPE_MUXED_ED25519 = 0x100) — Stellar-types.x lines 29-38.
+#
+# Expected result and where it comes from: kind = "roundtrip" means a
+# decoder must accept this value and re-encoding it must reproduce
+# value_base64 byte for byte, not merely an equal value. The payload was
+# produced by a program that builds the typed value with the official
+# `stellar-xdr 28.0.1` crate (features base64, alloc and std — the
+# crate version Protocol-Canary's canary-xdr pins for Protocol 28; rustc 1.91.0)
+# and serialises it with to_xdr_base64(Limits::none()), never hand-assembled.
+# Generation expression, recorded verbatim:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::MuxedEd25519(MuxedAccountMed25519 {
+#               id: 0x0102_0304_0506_0708,
+#               ed25519: Uint256([0x11; 32]),
+#           }),
+#           fee: 100,
+#           seq_num: SequenceNumber(1),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::Payment(PaymentOp {
+#                   destination: MuxedAccount::Ed25519(Uint256([0x22; 32])),
+#                   asset: Asset::Native,
+#                   amount: 10_000_000,
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: VecM::default(),
+#   })
+#
+# The same program asserted the crate's own round trip: from_xdr returned
+# Ok, the decoded value equals the built one, and re-encoding it reproduced
+# the encoding exactly.
+#
+# Is it deterministic: Yes. The generator uses no randomness, clock or
+# network; the same expression always yields the same bytes.
+#
+# Every byte is a synthetic structural value, not a capture of a real network
+# object: no real account key, contract id, signature or secret key appears,
+# and nothing here was observed on a network or accepted by a host.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+
+id = "p28-xdr-transaction-envelope-muxed-transaction-source"
+protocol = 28
+surface = "xdr"
+category = "transaction-envelope"
+description = "An unsigned Payment envelope whose transaction-level source is a muxed account round-trips byte-for-byte"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAQABAgMEBQYHCBERERERERERERERERERERERERERERERERERERERERERAAAAZAAAAAAAAAABAAAAAAAAAAAAAAABAAAAAAAAAAEAAAAAIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAAAACYloAAAAAAAAAAAA=="

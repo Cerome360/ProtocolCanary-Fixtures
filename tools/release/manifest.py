@@ -71,6 +71,10 @@ REGISTRY_NAME = "registry.json"
 # One 128 MiB cap on what is read while counting, well above the 16 MiB
 # archive limit (D-06), so a decompression bomb cannot exhaust memory here.
 _READ_CAP = 128 * 1024 * 1024
+# The archive's compressed bytes are checked against this cap on disk before
+# the file is read into memory (issue #570): reading first and validating the
+# size afterwards would let an arbitrarily large file exhaust memory.
+_MAX_ARCHIVE_BYTES = _READ_CAP
 
 _ARCHIVE_RE = re.compile(rf"{NAME}-((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\.tar\.gz")
 _REVISION_RE = re.compile(r"[0-9a-f]{40}")
@@ -78,7 +82,7 @@ _ENGINE_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 
 
-class ManifestError(Exception):
+class ManifestError(ValueError):
     """The manifest cannot be produced. The message says why."""
 
 
@@ -113,9 +117,18 @@ def inspect_archive(path: Path) -> dict:
     uncompressed = 0
     files: dict[str, bytes] = {}
     read_total = 0
+    seen_names: set[str] = set()
     try:
         with tarfile.open(path, mode="r:gz") as archive:
             for member in archive:
+                # A duplicate member name makes fixture resolution ambiguous,
+                # so the archive is refused rather than silently last-wins
+                # (issue #570).
+                if member.name in seen_names:
+                    raise ManifestError(
+                        f"the archive contains duplicate member name {member.name!r}"
+                    )
+                seen_names.add(member.name)
                 entries += 1
                 if member.isdir():
                     continue
@@ -174,6 +187,17 @@ def build_manifest(
                 "a range is never a verified combination"
             )
 
+    try:
+        size_on_disk = archive.stat().st_size
+    except OSError as error:
+        raise ManifestError(f"could not read {archive}: {error}") from None
+    if size_on_disk > _MAX_ARCHIVE_BYTES:
+        raise ManifestError(
+            f"{archive.name} is {size_on_disk} bytes, over the "
+            f"{_MAX_ARCHIVE_BYTES} byte archive limit; refusing to read it "
+            "into memory"
+        )
+
     data = archive.read_bytes()
     content = inspect_archive(archive)
     files: dict[str, bytes] = content["files"]
@@ -196,8 +220,18 @@ def build_manifest(
     declared = registry.get("packDigest")
     if not isinstance(registry_version, int) or isinstance(registry_version, bool):
         raise ManifestError(f"{REGISTRY_NAME} has no integer registryVersion")
+    if registry_version != 1:
+        raise ManifestError(
+            f"{REGISTRY_NAME} has registryVersion {registry_version}; only "
+            "registryVersion 1 is supported"
+        )
     if not isinstance(protocol, int) or isinstance(protocol, bool):
         raise ManifestError(f"{REGISTRY_NAME} has no integer protocol")
+    if protocol < 0:
+        raise ManifestError(
+            f"{REGISTRY_NAME} has protocol {protocol}; the protocol must be a "
+            "non-negative integer"
+        )
     if not isinstance(declared, str) or not _DIGEST_RE.fullmatch(declared):
         raise ManifestError(f"{REGISTRY_NAME} has no valid packDigest")
 

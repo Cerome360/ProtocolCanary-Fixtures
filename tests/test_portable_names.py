@@ -19,6 +19,11 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.registry import generate
+
 PORTABLE_NAMES_PATH = REPO_ROOT / "tools" / "validate" / "portable_names.py"
 
 _spec = importlib.util.spec_from_file_location(
@@ -259,6 +264,87 @@ class EmptySegmentTests(PortableNameTestCase):
         ):
             with self.subTest(path=path):
                 self.assert_path_rejected(path, offending)
+
+
+class MultiDotReservedNameTests(PortableNameTestCase):
+    """A reserved stem stays reserved however many extensions follow it.
+
+    The stem is everything before the *first* dot, so ``aux.tar.gz``,
+    ``NUL.data.json`` and ``Com9.v2.toml`` name the same devices as ``aux``,
+    ``NUL`` and ``Com9``.
+    """
+
+    def test_multi_dot_reserved_stems_are_rejected_as_device_names(self) -> None:
+        for name in (
+            "aux.tar.gz",
+            "AUX.tar.gz",
+            "Aux.a.b.c",
+            "NUL.data.json",
+            "nul.v1.2.toml",
+            "con.v2.toml",
+            "Com9.a.b.c",
+            "LPT1.fixture.bin",
+            "prn.schema.v1.json",
+        ):
+            with self.subTest(name=name):
+                error = self.assert_segment_rejected(name)
+                # The reserved-device rule, not the trailing-dot rule, decides.
+                self.assertIn("device name", error.problem)
+
+    def test_multi_dot_names_that_only_look_reserved_are_accepted(self) -> None:
+        for name in (
+            "auxiliary.tar.gz",
+            "console.v1.toml",
+            "com0.a.b",
+            "com10.a.b",
+            "lpt0.a.b",
+            "nullable.data.json",
+        ):
+            with self.subTest(name=name):
+                portable_names.check_segment(name)
+
+    def test_a_multi_dot_reserved_segment_in_a_path_is_rejected(self) -> None:
+        for path, offending in (
+            ("xdr/aux.tar.gz/b.toml", "aux.tar.gz"),
+            ("xdr/cap-0083/NUL.data.json", "NUL.data.json"),
+        ):
+            with self.subTest(path=path):
+                error = self.assert_path_rejected(path, offending)
+                self.assertIn("device name", error.problem)
+
+
+class ControlCharacterFilenameTests(unittest.TestCase):
+    """Control characters in a pack path are a portability violation.
+
+    ``portable_names`` is only the Windows rule; the pack-path contract that
+    also rejects control characters lives in the registry generator, which
+    every path-consuming tool shares.
+    """
+
+    def test_every_control_character_is_rejected_in_a_file_name(self) -> None:
+        for codepoint in range(0x00, 0x20):
+            path = f"xdr/cap-0083/bad{chr(codepoint)}name.toml"
+            with self.subTest(codepoint=codepoint):
+                with self.assertRaises(generate.PackError) as caught:
+                    generate.check_pack_path(path)
+                self.assertIn("contains a control character", str(caught.exception))
+                self.assertIn(repr(path), str(caught.exception))
+
+    def test_a_control_character_is_rejected_in_a_directory_segment(self) -> None:
+        for codepoint in (0x01, 0x1F):
+            with self.subTest(codepoint=codepoint):
+                with self.assertRaises(generate.PackError) as caught:
+                    generate.check_pack_path(f"xdr/bad{chr(codepoint)}dir/a.toml")
+                self.assertIn("contains a control character", str(caught.exception))
+
+    def test_printable_names_with_the_same_shape_are_accepted(self) -> None:
+        for path in (
+            "xdr/cap-0083/bad_name.toml",
+            "xdr/cap-0083/bad-name.toml",
+            "xdr/cap-0083/bad.name.toml",
+        ):
+            with self.subTest(path=path):
+                generate.check_pack_path(path)
 
 
 class ErrorPayloadTests(PortableNameTestCase):

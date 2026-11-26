@@ -364,6 +364,11 @@ RPC_ASSERT_FIELDS = (
 class Fixture:
     path: Path
     data: dict
+    # The pack root the fixture was loaded from (``None`` for a fixture
+    # constructed directly, e.g. in a unit test). Payload references are
+    # confined to it, so a fixture cannot point at a file outside the pack
+    # it belongs to (F-056, issue #583).
+    root: Path | None = None
 
 
 @dataclass
@@ -703,6 +708,13 @@ def check_source_reference(value: str) -> str | None:
 
 
 def find_fixture_files(root: Path) -> list[Path]:
+    """Return every regular ``*.toml`` fixture file under ``root``.
+
+    The search is recursive, skips paths under a ``.git`` directory, and
+    returns absolute paths sorted for deterministic iteration. No file is
+    read, parsed or reported here: callers load each path with
+    :func:`load_fixture`, which records all problems on a :class:`Report`.
+    """
     fixtures = []
     for p in root.rglob("*.toml"):
         if not p.is_file():
@@ -846,6 +858,17 @@ def report_out_of_range_integers(path: Path, data: dict, report: Report) -> bool
 
 
 def load_fixture(path: Path, report: Report, root: Path | None = None) -> Fixture | None:
+    """Read and parse one TOML fixture, recording problems on ``report``.
+
+    ``root``, when given, is the pack directory used to shorten the path in
+    diagnostics; otherwise the nearest ``protocol-*`` ancestor is used, falling
+    back to the file name. Returns a :class:`Fixture` on success and ``None``
+    when the file cannot be read or parsed. Errors are appended to ``report``,
+    never raised: an unreadable or oversized file, invalid UTF-8, forbidden
+    control or bidirectional characters, invalid TOML (with a line number when
+    the parser exposes one), and TOML integers outside the signed 64-bit range
+    the engine accepts all produce diagnostics and no fixture.
+    """
     try:
         st = path.stat()
         file_size = st.st_size
@@ -940,7 +963,7 @@ def load_fixture(path: Path, report: Report, root: Path | None = None) -> Fixtur
         # nothing to gain by validating a document it never sees (issue #341,
         # row 4).
         return None
-    return Fixture(path=path, data=data)
+    return Fixture(path=path, data=data, root=root)
 
 
 def known_fixture_id(fx: Fixture) -> str | None:
@@ -975,6 +998,17 @@ def _require(data: dict, key: str, expected_type: type, path: Path, report: Repo
 
 
 def validate_common_fields(fx: Fixture, report: Report) -> None:
+    """Validate the fields every fixture shares, recording errors on ``report``.
+
+    Checks required fields and their types, a non-empty lowercase ``id``, a
+    positive integer ``protocol``, a known ``surface``, a non-empty and
+    non-vague ``category``, a non-empty ``description``, a required
+    authoritative ``source_reference`` (including that any commit or release
+    link is pinned), known and unique ``required_capabilities``, and that any
+    ``input_file``/``expected_file`` resolves to an existing file. Returns
+    ``None``; every problem is appended to ``report`` with the fixture's path
+    and id, and a line number when the field's definition can be located.
+    """
     data, path = fx.data, fx.path
 
     ok_id = _require(data, "id", str, path, report)
@@ -1085,14 +1119,56 @@ def validate_common_fields(fx: Fixture, report: Report) -> None:
                     line=_field_line(path, file_field),
                 )
                 continue
-            referenced = (path.parent / data[file_field]).resolve()
-            if not referenced.is_file():
+            referenced, problem = resolve_payload_reference(fx, file_field)
+            if problem is not None:
+                report.error(path, problem, line=_field_line(path, file_field))
+            elif referenced is not None and not referenced.is_file():
                 report.error(
                     path,
                     f"{file_field} {data[file_field]!r} does not resolve to an existing file "
                     f"(resolved: {referenced})",
                     line=_field_line(path, file_field),
                 )
+
+
+def resolve_payload_reference(fx: Fixture, file_field: str) -> tuple[Path | None, str | None]:
+    """Resolve an ``input_file``/``expected_file`` reference inside the pack root.
+
+    Returns ``(resolved_path, None)`` for a reference that stays inside the
+    selected fixture-pack root, and ``(None, problem)`` for one that does not.
+    A non-string or empty value returns ``(None, None)``: the type check in
+    ``validate_common_fields`` reports that case, and it is not a path.
+
+    A reference must be relative to the fixture file and, once resolved (so
+    symlinks are followed), must remain under the pack root. Absolute paths
+    and ``..`` traversal that escapes the pack are therefore rejected, and so
+    is a symlink whose target lies outside the pack, which is what issue #583
+    requires. No URL decoding is applied: the value is a filesystem path, not
+    a URL. When the fixture was constructed without a pack root (only direct
+    unit-test callers do that) the fixture's own directory is the boundary,
+    which is the narrowest sensible interpretation of "inside the pack".
+    """
+    value = fx.data.get(file_field)
+    if not isinstance(value, str) or not value:
+        return None, None
+    if Path(value).is_absolute():
+        return None, (
+            f"field {file_field!r} must be a path relative to the fixture file; "
+            f"absolute paths are not allowed (got {value!r})"
+        )
+    root = (fx.root if fx.root is not None else fx.path.parent).resolve()
+    try:
+        referenced = (fx.path.parent / value).resolve()
+    except (OSError, ValueError) as error:
+        return None, f"{file_field} {value!r} could not be resolved: {error}"
+    try:
+        referenced.relative_to(root)
+    except ValueError:
+        return None, (
+            f"field {file_field!r} {value!r} resolves outside the fixture-pack "
+            f"root {root} (resolved: {referenced})"
+        )
+    return referenced, None
 
 
 def validate_top_level_keys(fx: Fixture, report: Report) -> None:
@@ -1142,6 +1218,14 @@ def _validate_base64(value: str, field_name: str, path: Path, report: Report) ->
 
 
 def validate_xdr_body(fx: Fixture, report: Report) -> None:
+    """Validate an ``xdr`` fixture body and append problems to ``report``.
+
+    Requires ``type`` to name an XDR type ``canary-xdr`` supports and ``kind``
+    to be one of ``XDR_KINDS``. ``value_base64`` is required, non-empty and
+    canonical base64; ``expected_base64`` is required and validated only for
+    ``encode-equals`` and is rejected for every other kind, matching the
+    engine's loader. Returns ``None``.
+    """
     data, path = fx.data, fx.path
 
     ok_type = _require(data, "type", str, path, report)
@@ -1310,6 +1394,9 @@ def validate_rpc_request(method: str, data: dict, path: Path, report: Report) ->
                 line=_field_line(path, "request"),
             )
 
+    # Ledger values that passed both the type and range checks above; the
+    # ordering rule below only applies to values that are otherwise valid.
+    ledger_values: dict[str, int] = {}
     for ledger_key in ("startLedger", "endLedger"):
         if ledger_key in request:
             val = request[ledger_key]
@@ -1325,6 +1412,22 @@ def validate_rpc_request(method: str, data: dict, path: Path, report: Report) ->
                     f"[request] {ledger_key}: {val} is not a ledger sequence (0..={_RPC_MAX_LEDGER})",
                     line=_field_line(path, "request"),
                 )
+            else:
+                ledger_values[ledger_key] = val
+
+    # getEvents takes an inclusive [startLedger, endLedger] window per the
+    # Stellar RPC specification, so an inverted range is not a valid request
+    # (issue #582). endLedger == startLedger is the valid single-ledger case.
+    if "startLedger" in ledger_values and "endLedger" in ledger_values:
+        start = ledger_values["startLedger"]
+        end = ledger_values["endLedger"]
+        if end < start:
+            report.error(
+                path,
+                f"[request] endLedger {end} is before startLedger {start}; "
+                "the ledger range must satisfy endLedger >= startLedger",
+                line=_field_line(path, "request"),
+            )
 
     if "pagination" in request:
         pag = request["pagination"]
@@ -1469,6 +1572,14 @@ def validate_rpc_request(method: str, data: dict, path: Path, report: Report) ->
 
 
 def validate_rpc_body(fx: Fixture, report: Report) -> None:
+    """Validate an ``rpc`` fixture body and append problems to ``report``.
+
+    Requires ``method`` to be one of ``RPC_METHODS`` and validates the optional
+    ``[request]`` table for that method. Requires a non-empty ``[[assert]]``
+    array; each assertion must carry a known ``kind``, only the keys that kind
+    accepts, a non-empty string ``field``, and the kind's required value, type,
+    range or one-of list. Returns ``None``.
+    """
     data, path = fx.data, fx.path
 
     ok_method = _require(data, "method", str, path, report)
@@ -1992,6 +2103,14 @@ def decode_strkey(
 
 
 def validate_soroban_body(fx: Fixture, report: Report) -> None:
+    """Validate a ``soroban`` fixture body and append problems to ``report``.
+
+    Checks the required ``source_account`` (a G... strkey), ``contract_id`` (a
+    C... strkey), non-empty ``function`` of at most 32 UTF-8 bytes and an
+    integer ``sequence_number``; validates every optional ``[[args]]`` entry;
+    and requires an ``[expect]`` table with a known ``kind`` and, when present,
+    a non-empty string ``message_contains``. Returns ``None``.
+    """
     data, path = fx.data, fx.path
 
     if _require(data, "source_account", str, path, report):
@@ -2111,6 +2230,13 @@ def validate_soroban_body(fx: Fixture, report: Report) -> None:
 
 
 def validate_body(fx: Fixture, report: Report) -> None:
+    """Dispatch body validation on the fixture's ``surface``.
+
+    ``xdr``, ``rpc`` and ``soroban`` are handled by their dedicated validators;
+    an invalid or missing surface was already reported by
+    :func:`validate_common_fields`, so it adds no further diagnostic here.
+    Returns ``None`` and appends every problem to ``report``.
+    """
     surface = fx.data.get("surface")
     if surface == "xdr":
         validate_xdr_body(fx, report)
@@ -2126,6 +2252,16 @@ def validate_unique_ids(
     report: Report,
     seen: dict[str, Path] | None = None,
 ) -> dict[str, Path]:
+    """Report fixture ids already defined elsewhere and return the id map.
+
+    ``seen`` maps each accepted id to the path that first defined it; pass the
+    returned map back on a later call to enforce uniqueness across several
+    roots. A duplicate is reported on the later fixture's path with its ``id``
+    line when known and names the first defining path; the first definition is
+    left in the map. Non-string ids are skipped because
+    :func:`validate_common_fields` already reports their type. Returns the
+    updated id-to-path map.
+    """
     if seen is None:
         seen = {}
     for fx in fixtures:
@@ -2163,6 +2299,16 @@ def check_portable_paths(root: Path, report: Report) -> None:
 
 
 def validate_directory(root: Path, seen_ids: dict[str, Path] | None = None) -> Report:
+    """Validate one pack directory and return the aggregated ``Report``.
+
+    Walks the pack for ``*.toml`` fixtures, checks portable file names and the
+    pack's file-count, depth and total-size limits, loads every fixture,
+    accounts for referenced payload files, and runs the common-field, body and
+    top-level-key validators. Uniqueness is checked last, passing ``seen_ids``
+    through to :func:`validate_unique_ids` so ids are unique across roots.
+    Never raises for fixture problems and never mutates the files: every error
+    and warning is a :class:`Diagnostic` on the returned report.
+    """
     report = Report()
     fixtures: list[Fixture] = []
     check_portable_paths(root, report)
@@ -2190,33 +2336,36 @@ def validate_directory(root: Path, seen_ids: dict[str, Path] | None = None) -> R
         if fx is not None:
             fixtures.append(fx)
 
-    # Check payload files referenced by input_file or expected_file
+    # Check payload files referenced by input_file or expected_file. Only a
+    # reference confined to the pack root is a pack member; an escaping or
+    # absolute reference is reported by validate_common_fields and never
+    # treated as part of this pack (issue #583).
     for fx in fixtures:
         for file_field in ("input_file", "expected_file"):
             if file_field in fx.data:
-                val = fx.data[file_field]
-                if isinstance(val, str) and val:
-                    referenced = (fx.path.parent / val).resolve()
-                    if referenced.is_file():
-                        pack_members.add(referenced)
-                        try:
-                            rel_payload = referenced.relative_to(root.resolve()).as_posix()
-                        except ValueError:
-                            rel_payload = referenced.name
-                        if len(rel_payload.split("/")) > pack_limits.MAX_DEPTH:
+                referenced, problem = resolve_payload_reference(fx, file_field)
+                if problem is not None or referenced is None:
+                    continue
+                if referenced.is_file():
+                    pack_members.add(referenced)
+                    try:
+                        rel_payload = referenced.relative_to(root.resolve()).as_posix()
+                    except ValueError:
+                        rel_payload = referenced.name
+                    if len(rel_payload.split("/")) > pack_limits.MAX_DEPTH:
+                        report.error(
+                            referenced,
+                            f"{rel_payload} is deeper than {pack_limits.MAX_DEPTH} path segments",
+                        )
+                    try:
+                        st = referenced.stat()
+                        if st.st_size > pack_limits.MAX_FILE_BYTES:
                             report.error(
                                 referenced,
-                                f"{rel_payload} is deeper than {pack_limits.MAX_DEPTH} path segments",
+                                f"{rel_payload} is {st.st_size} bytes, over the {pack_limits.MAX_FILE_BYTES} byte limit for one pack file",
                             )
-                        try:
-                            st = referenced.stat()
-                            if st.st_size > pack_limits.MAX_FILE_BYTES:
-                                report.error(
-                                    referenced,
-                                    f"{rel_payload} is {st.st_size} bytes, over the {pack_limits.MAX_FILE_BYTES} byte limit for one pack file",
-                                )
-                        except OSError as exc:
-                            report.error(referenced, f"failed to read file: {exc}")
+                    except OSError as exc:
+                        report.error(referenced, f"failed to read file: {exc}")
 
     # Enforce count and total size limits per root
     if len(pack_members) > pack_limits.MAX_FILES:

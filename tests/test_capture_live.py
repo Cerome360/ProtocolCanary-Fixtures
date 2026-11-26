@@ -703,6 +703,41 @@ class CaptureLiveUnitTests(unittest.TestCase):
         ):
             self.assertEqual(capture_live.git_revision(REPO_ROOT), "unknown")
 
+    def test_a_clean_checkout_records_the_commit(self) -> None:
+        revision = "0123456789abcdef0123456789abcdef01234567"
+
+        def fake_run(args, **_kwargs):
+            stdout = "" if "status" in args else revision + "\n"
+            return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+        with mock.patch.object(capture_live.subprocess, "run", side_effect=fake_run):
+            self.assertEqual(capture_live.git_revision(REPO_ROOT), revision)
+
+    def test_a_dirty_checkout_records_an_unknown_revision(self) -> None:
+        """Uncommitted changes must not be attributed to the clean commit (#571)."""
+        revision = "0123456789abcdef0123456789abcdef01234567"
+        for status in (" M tools/evidence/capture_live.py\n", "?? scratch.txt\n"):
+            with self.subTest(status=status):
+
+                def fake_run(args, _status=status, **_kwargs):
+                    stdout = _status if "status" in args else revision + "\n"
+                    return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+                with mock.patch.object(
+                    capture_live.subprocess, "run", side_effect=fake_run
+                ):
+                    self.assertEqual(capture_live.git_revision(REPO_ROOT), "unknown")
+
+    def test_a_failing_status_check_records_an_unknown_revision(self) -> None:
+        revision = "0123456789abcdef0123456789abcdef01234567"
+        with mock.patch.object(capture_live.subprocess, "run") as run:
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, stdout=revision, stderr=""),
+                subprocess.CompletedProcess([], 128, stdout="", stderr="fatal"),
+            ]
+            self.assertEqual(capture_live.git_revision(REPO_ROOT), "unknown")
+        self.assertIn("status", run.call_args_list[-1].args[0])
+
     def test_a_summary_knows_whether_it_failed(self) -> None:
         endpoint = capture_live.Endpoint(
             url="http://127.0.0.1:1",

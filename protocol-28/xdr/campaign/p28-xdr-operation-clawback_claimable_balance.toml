@@ -1,0 +1,60 @@
+# Protocol 28 / TransactionEnvelope: CLAWBACK_CLAIMABLE_BALANCE with ClaimableBalanceID V0.
+#
+# What this tests: a TransactionEnvelope V1 exercising OperationBody arm
+# CLAWBACK_CLAIMABLE_BALANCE (OperationType 20) carrying a ClaimableBalanceID V0
+# and synthetic 32-byte hash.
+#
+# Why it matters: OperationBody discriminates CLAWBACK_CLAIMABLE_BALANCE (tag 20)
+# with a ClawbackClaimableBalanceOp containing a nested ClaimableBalanceID union.
+# Decoders and encoders must correctly distinguish this tag from tag 15 and
+# decode the nested V0 discriminator and 32-byte hash.
+#
+# Introduced in:
+# Protocol 17 (CAP-0035 Clawback).
+#
+# Expected result and where it comes from:
+# kind = "roundtrip". Generated using the official `stellar-xdr` 28.0.1 crate
+# (features base64, alloc, std) and rustc 1.99.1 (58cf8f9c3 2026-10-13) with
+# WriteXdr::to_xdr_base64(Limits::none()). The crate decodes and reproduces the
+# exact encoding byte-for-byte.
+#
+# Construction expression:
+#
+#   TransactionEnvelope::Tx(TransactionV1Envelope {
+#       tx: Transaction {
+#           source_account: MuxedAccount::Ed25519(Uint256([0x44; 32])),
+#           fee: 100_000,
+#           seq_num: SequenceNumber(2_345_678),
+#           cond: Preconditions::None,
+#           memo: Memo::None,
+#           operations: vec![Operation {
+#               source_account: None,
+#               body: OperationBody::ClawbackClaimableBalance(ClawbackClaimableBalanceOp {
+#                   balance_id: ClaimableBalanceId::ClaimableBalanceIdTypeV0(Hash([0xbb; 32])),
+#               }),
+#           }].try_into().unwrap(),
+#           ext: TransactionExt::V0,
+#       },
+#       signatures: vec![DecoratedSignature {
+#           hint: SignatureHint([0x66; 4]),
+#           signature: Signature(BytesM::try_from(vec![0x66; 64]).unwrap()),
+#       }].try_into().unwrap(),
+#   }).to_xdr_base64(Limits::none())
+#
+# Determinism:
+# Deterministic typed XDR construction. Synthetic structural values only; no
+# transaction validity, ledger application, or clawback authorization is claimed.
+#
+# Definition: https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x
+#             https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-types.x
+
+id = "p28-xdr-operation-clawback_claimable_balance"
+protocol = 28
+surface = "xdr"
+category = "campaign"
+description = "A `TransactionEnvelope` V1 with a `CLAWBACK_CLAIMABLE_BALANCE` operation carrying a ClaimableBalanceID V0 round-trips"
+source_reference = "https://github.com/stellar/stellar-xdr/blob/9c9c145953e80990d6ff1ae3a6a973a0ce6d0694/Stellar-transaction.x"
+
+type = "TransactionEnvelope"
+kind = "roundtrip"
+value_base64 = "AAAAAgAAAABERERERERERERERERERERERERERERERERERERERERERAABhqAAAAAAACPKzgAAAAAAAAAAAAAAAQAAAAAAAAAUAAAAALu7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7AAAAAAAAAAFmZmZmAAAAQGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="

@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-ledger-entry-trustline-i64-boundaries",
+  "fixtureSha256": "28464809a913d2b85f4fd97a5eee39d5c009147c017a2997ca143f3acc3f008a",
+  "method": "structural",
+  "checkedAt": "2026-11-23T10:14:22Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "1498e1c4a94745267fea149e28b09f0b2b084498"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

@@ -254,6 +254,83 @@ class FilterBoundTests(unittest.TestCase):
         report = support.run_validation({"a.toml": head + tail})
         self.assertTrue(any("filters: must be an array of tables" in e for e in report.errors), report.errors)
 
+    def test_an_inverted_ledger_range_is_rejected(self) -> None:
+        # getEvents takes an inclusive window, so endLedger < startLedger is
+        # not a valid request (issue #582).
+        report = self.mutate(
+            "startLedger = 5347400", "startLedger = 5347400\nendLedger = 5347399"
+        )
+        self.assertTrue(
+            any(
+                "endLedger 5347399 is before startLedger 5347400" in e
+                and "endLedger >= startLedger" in e
+                for e in report.errors
+            ),
+            report.errors,
+        )
+
+    def test_a_single_ledger_range_is_accepted(self) -> None:
+        report = self.mutate(
+            "startLedger = 5347400", "startLedger = 5347400\nendLedger = 5347400"
+        )
+        self.assertEqual(report.errors, [])
+
+    def test_a_forward_ledger_range_is_accepted(self) -> None:
+        report = self.mutate(
+            "startLedger = 5347400", "startLedger = 5347400\nendLedger = 5347500"
+        )
+        self.assertEqual(report.errors, [])
+
+    def test_a_non_integer_end_ledger_keeps_its_type_error(self) -> None:
+        report = self.mutate(
+            "startLedger = 5347400", 'startLedger = 5347400\nendLedger = "5347400"'
+        )
+        self.assertTrue(
+            any("[request] endLedger: must be an integer" in e for e in report.errors),
+            report.errors,
+        )
+
+    def test_a_malformed_topic_filter_is_rejected_with_a_diagnostic(self) -> None:
+        report = self.mutate(
+            'topics = [["AAAADwAAAA9uZXdfYmxvY2tfZXZlbnQA"]]',
+            'topics = [["AAAADwAAAA9uZXdfYmxvY2tfZXZlbnQA", 3]]',
+        )
+        self.assertTrue(
+            any("a topics entry must contain only strings" in e for e in report.errors),
+            report.errors,
+        )
+
+    def test_an_empty_pagination_cursor_is_rejected(self) -> None:
+        report = self.mutate(
+            "[request.pagination]\n", '[request.pagination]\ncursor = ""\n'
+        )
+        self.assertTrue(
+            any(
+                "[request] pagination: cursor must be a non-empty string" in e
+                for e in report.errors
+            ),
+            report.errors,
+        )
+
+    def test_a_non_string_pagination_cursor_is_rejected(self) -> None:
+        report = self.mutate(
+            "[request.pagination]\n", "[request.pagination]\ncursor = 7\n"
+        )
+        self.assertTrue(
+            any(
+                "[request] pagination: cursor must be a non-empty string" in e
+                for e in report.errors
+            ),
+            report.errors,
+        )
+
+    def test_a_well_formed_pagination_cursor_is_accepted(self) -> None:
+        report = self.mutate(
+            "[request.pagination]\n",
+            '[request.pagination]\ncursor = "0022974845218234368-0000000000"\n',
+        )
+        self.assertEqual(report.errors, [])
+
     def test_the_request_keys_are_the_documented_getevents_parameters(self) -> None:
         self.assertEqual(
             set(validate._RPC_METHOD_PARAMS["get-events"]),

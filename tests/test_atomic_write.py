@@ -400,37 +400,51 @@ class BaselineHashTest(unittest.TestCase):
     checksum against a half-written archive would be defeated.
 
     The values were recorded by building the same four artifacts from
-    ``upstream/main`` at ec10f95, before this branch changed any tool, and
+    upstream/main at ec10f95, before this branch changed any tool, and
     re-recorded on 2026-11-20 when the Protocol 28 ScVal schema, null-map,
     scalar-endpoint and wide-integer fixtures (issues #503-#506) changed the
     pack's content, and again on 2026-11-20 when the one-byte padding,
     invalid ScVal discriminant/flag, Offer/Data LedgerEntry and muxed
     operation-source fixtures (issues #507-#509, #514) changed it again, and
     for the StellarValue upgrade-bound, Soroban ext V1 and AccountEntry
-    inflationDest fixtures (issues #515, #518, #523), and again for the
-    signature-count, absent V0 time-bounds, muxed fee-source and account-owned
-    ExternalRef fixtures (issues #533, #535, #536, #537): a content change
-    legitimately moves all four hashes, while the property being pinned stays
-    the same -- the atomic write reproduces whatever bytes the tools produce.
+    inflationDest fixtures (issues #515, #518, #523), and for the CREATE_ACCOUNT
+    operation fixture (issue #540), and for the CREATE_PASSIVE_SELL_OFFER,
+    MANAGE_BUY_OFFER, muxed-tx-source, and LedgerEntry scalar-boundary
+    fixtures (issues #556, #557, #558, #561), and for the void
+    operation arms fixture (issue #543), and for the ACCOUNT_MERGE
+    fixture (issue #542), and for the Protocol 28
+    MANAGE_SELL_OFFER envelope fixture (issue #555), and for the
+    liveUntilLedgerSeq endpoint fixtures (issue #531), and for the
+    MANAGE_DATA operation fixture (issue #544), and for the
+    Transaction operation vector limit fixtures (issue #532), and for the
+    BUMP_SEQUENCE signed boundary fixture (issue #545), and for the
+    TransactionEnvelope upload, memo, time-bound and issued-asset fixtures
+    (issues #510-#513), and for the operation arms, footprint arms,
+    StellarValue closeTime boundaries, and V1 integer boundaries fixtures
+    (issues #547, #548, #559, #560), and for the CLAWBACK and
+    SET_TRUST_LINE_FLAGS operation fixtures (issues #551, #552): a content change
+    legitimately moves all four hashes,
+    while the property being pinned stays the same -- the atomic write
+    reproduces whatever bytes the tools produce.
 
     Recompute them with:
         python3 tools/pack/pack.py protocol-28 --version 1.0.0 --output-dir D
-        python3 tools/release/manifest.py D/protocolcanary-fixtures-1.0.0.tar.gz \\
-            --revision 0123456789abcdef0123456789abcdef01234567 --engine 0.2.0 \\
-            --output D/protocolcanary-fixtures-1.0.0.manifest.json \\
+        python3 tools/release/manifest.py D/protocolcanary-fixtures-1.0.0.tar.gz \
+            --revision 0123456789abcdef0123456789abcdef01234567 --engine 0.2.0 \
+            --output D/protocolcanary-fixtures-1.0.0.manifest.json \
             --sha256-file D/protocolcanary-fixtures-1.0.0.tar.gz.sha256
         python3 tools/registry/generate.py protocol-28 --output D/registry-v1.json
     """
 
     BASELINE = {
         "protocolcanary-fixtures-1.0.0.tar.gz":
-            "4cd3f3a2e31b074cb94484b26300e03dd9b8febcf0617a56fb0c569abd1fde9e",
+            "ea3a4d553a9e06b7c6ca542e2dfcebd7e39a8ef6fb3989bcda9070c73c7a0081",
         "protocolcanary-fixtures-1.0.0.manifest.json":
-            "0b5bc2210f68c8528468ca86b9d582d05a5d6ffcea6c2e5b353c9c410cd64c94",
+            "75174d80ccd156801dac9ecae38b2e44a86d128b18403a758691559315645b5d",
         "protocolcanary-fixtures-1.0.0.tar.gz.sha256":
-            "fd1750521ae6d21a172e96a7f8c5d0490ab9a3ee1ae6a66dde172fde776e0f77",
+            "46acfe80cfec453fc41ef671b867f879d43363c6862f62641df0fe94eade2d2f",
         "registry-v1.json":
-            "8912ceabfa9240314a31d26032aad897412a82420f30022ac4de440ce78c1c80",
+            "c40a6e597d0bd980a7ac3ab7a23f86ea59e5eafc119100c10aeb2d416719b411",
     }
 
     def setUp(self) -> None:

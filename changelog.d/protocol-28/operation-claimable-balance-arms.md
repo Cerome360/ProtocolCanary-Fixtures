@@ -1,0 +1,1 @@
+- Add Protocol 28 V1 TransactionEnvelope fixtures for CLAIM_CLAIMABLE_BALANCE and CLAWBACK_CLAIMABLE_BALANCE operation arms with ClaimableBalanceID V0 payloads.

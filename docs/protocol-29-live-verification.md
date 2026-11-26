@@ -7,6 +7,27 @@ The workflow runs a Testnet and Futurenet matrix leg independently and uploads
 each leg's raw captures, verification records and command log as an artifact.
 It does not write to the repository.
 
+## Testnet evidence is historical after the Protocol 30 upgrade
+
+Added 2026-11-23. Testnet activated Protocol 30 on 2026-11-03. Any Protocol 29
+Testnet capture, verification record or workflow result produced before that
+upgrade is historical evidence for the endpoint and instant it names; it is not
+current Protocol 29 coverage. Futurenet still reported Protocol 29 when the
+split Action workflow below was prepared, so the Futurenet leg remains the
+current Protocol 29 network check.
+
+The current Protocol 30 Testnet identity evidence is recorded separately in
+[Protocol 30 Testnet RPC evidence](protocol-30-live-verification.md). The first
+post-upgrade [Action run
+41990892418](https://github.com/StellarCanary/ProtocolCanary-Action/actions/runs/41990892418)
+passed both the Protocol 30 Testnet and Protocol 29 Futurenet legs on
+2026-11-05.
+
+This note does not alter the schedule, capture files, checksums or validation
+thresholds in this document, and it does not silence a workflow alarm: a leg
+that reports a protocol version other than the one its fixture pins still
+fails. No Protocol 29 Testnet capture is presented here as current coverage.
+
 ## Endpoints and network identity
 
 The allowlist in `tools/evidence/capture_live.py` contains only:

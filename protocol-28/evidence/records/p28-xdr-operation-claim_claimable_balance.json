@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-claim_claimable_balance",
+  "fixtureSha256": "38beb61a8a8ab4e9ffb2fc2f2909ffa0eb57522b161c1ae734c0e40d2f001fd7",
+  "method": "structural",
+  "checkedAt": "2026-11-21T22:57:41Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "249b523f90d820917564550d6018c988ce4a8536"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

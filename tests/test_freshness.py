@@ -28,6 +28,26 @@ class TestVerificationFreshness(unittest.TestCase):
         dt = freshness.parse_checked_at(valid_ts, now=self.now)
         self.assertEqual(dt.microsecond, 123456)
 
+    def test_parse_checked_at_truncates_fractions_beyond_microseconds(self) -> None:
+        """Longer RFC 3339 fractions parse with the validator's truncation policy."""
+        cases = {
+            "2026-10-22T08:00:00.1Z": 100000,
+            "2026-10-22T08:00:00.1234567Z": 123456,
+            "2026-10-22T08:00:00.123456789Z": 123456,
+            "2026-10-22T08:00:00.999999999999Z": 999999,
+        }
+        for value, expected_microsecond in cases.items():
+            with self.subTest(value=value):
+                dt = freshness.parse_checked_at(value, now=self.now)
+                self.assertEqual(dt.microsecond, expected_microsecond)
+                self.assertEqual(dt.tzinfo, UTC)
+
+    def test_parse_checked_at_rejects_future_high_precision_timestamp(self) -> None:
+        future_ts = "2026-10-23T12:00:00.123456789Z"
+        with self.assertRaises(freshness.FreshnessFormatError) as ctx:
+            freshness.parse_checked_at(future_ts, now=self.now)
+        self.assertIn("future timestamp", str(ctx.exception))
+
     def test_parse_checked_at_rejects_future_timestamp(self) -> None:
         """Negative test: future timestamps report a format error."""
         future_ts = "2026-10-23T12:00:00Z"

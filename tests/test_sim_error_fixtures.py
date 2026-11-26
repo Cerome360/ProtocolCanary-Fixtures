@@ -281,6 +281,113 @@ class ErrorCodeTaxonomyTests(unittest.TestCase):
                 self.assertNotIn("Contract", needle)
 
 
+class ResourceLimitErrorTests(unittest.TestCase):
+    """CPU and memory exhaustion are host Budget errors (issue #621).
+
+    Issue #621 names ``schemas/simulation-error.schema.json`` and asks for
+    consumed resource counts. Neither exists here: ``schemas/fixture-v1.schema.json``
+    is the shipped schema and a simulation-error expectation carries only
+    ``kind`` and ``message_contains``. These tests therefore cover the two
+    exhaustion classes as the host reports them and prove that any invented
+    count field is rejected rather than silently ignored, which is the same
+    failure mode the missing schema would otherwise hide.
+    """
+
+    # Both CPU and memory budget failures are SCE_BUDGET / SCEC_EXCEEDED_LIMIT
+    # in Stellar-contract.x. The diagnostic differs; the stable typed pair does
+    # not, and message_contains pins only that pair.
+    RESOURCE_LIMIT_CASES = {
+        "cpu-instructions": {
+            "message": "Error(Budget, ExceededLimit)",
+            "diagnostic": "cpu instruction limit exceeded",
+        },
+        "memory": {
+            "message": "Error(Budget, ExceededLimit)",
+            "diagnostic": "memory limit exceeded",
+        },
+    }
+
+    def write_fixture(self, root: Path, slug: str, message: str) -> Path:
+        contents = BASE_FIXTURE.replace(
+            'id = "p28-soroban-example"', f'id = "p28-soroban-{slug}"'
+        ) + f'message_contains = "{message}"\n'
+        path = root / f"p28-soroban-{slug}.toml"
+        path.write_text(contents, encoding="utf-8")
+        return path
+
+    def test_cpu_and_memory_exhaustion_fixtures_validate_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for slug, case in self.RESOURCE_LIMIT_CASES.items():
+                self.write_fixture(root, slug, case["message"])
+            self.assertEqual(validate.validate_directory(root).errors, [])
+
+    def test_resource_limit_errors_name_the_budget_exceeded_limit_pair(self) -> None:
+        known_types = {rendered_error_name(name, "SCE_") for name in SC_ERROR_TYPES}
+        known_codes = {rendered_error_name(name, "SCEC_") for name in SC_ERROR_CODES}
+        self.assertIn("Budget", known_types)
+        self.assertIn("ExceededLimit", known_codes)
+        for slug, case in self.RESOURCE_LIMIT_CASES.items():
+            with self.subTest(case=slug):
+                match = ERROR_PATTERN.match(case["message"])
+                self.assertIsNotNone(match)
+                self.assertEqual(match.groups(), ("Budget", "ExceededLimit"))
+                self.assertTrue(case["diagnostic"])
+
+    def test_the_shipped_schema_has_no_consumed_resource_count_fields(self) -> None:
+        schema = json.loads(
+            (REPO_ROOT / "schemas" / "fixture-v1.schema.json").read_text(encoding="utf-8")
+        )
+        soroban_block = next(
+            block
+            for block in schema["allOf"]
+            if block.get("if", {}).get("properties", {}).get("surface", {}).get("const")
+            == "soroban"
+        )
+        expect = soroban_block["then"]["properties"]["expect"]
+        self.assertEqual(sorted(expect["properties"]), sorted(validate.SOROBAN_EXPECT_FIELDS))
+        for field in (
+            "consumed_instructions",
+            "consumed_memory_bytes",
+            "cpu_instructions_consumed",
+            "memory_bytes_consumed",
+        ):
+            with self.subTest(field=field):
+                self.assertNotIn(field, expect["properties"])
+
+    def test_consumed_resource_counts_are_rejected_not_ignored(self) -> None:
+        # Unmodelled fields would be ignored by the loader, turning an apparent
+        # resource-count assertion into "the simulation failed". The shipped
+        # schema closes [expect], and the validator must agree.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = self.write_fixture(
+                root, "resource-limit", self.RESOURCE_LIMIT_CASES["cpu-instructions"]["message"]
+            )
+            path.write_text(
+                path.read_text(encoding="utf-8")
+                + "consumed_instructions = 100\nconsumed_memory_bytes = 1024\n",
+                encoding="utf-8",
+            )
+            errors = validate.validate_directory(root).errors
+        for field in ("consumed_instructions", "consumed_memory_bytes"):
+            self.assertTrue(any("unexpected key" in e and field in e for e in errors), errors)
+
+    def test_the_shipped_suite_does_not_fabricate_an_exhaustion_observation(self) -> None:
+        # The four shipped simulation-error fixtures were observed for
+        # unknown-function, missing-contract, arity and argument-type failures.
+        # None claims CPU or memory exhaustion; adding one without a live
+        # observation would be fabricated coverage.
+        for fixture_id in SIM_ERROR_IDS:
+            fx = validate.load_fixture(
+                SOROBAN_DIR / f"{fixture_id}.toml", validate.Report()
+            )
+            needle = fx.data["expect"].get("message_contains", "")
+            with self.subTest(fixture=fixture_id):
+                self.assertNotIn("ExceededLimit", needle)
+                self.assertNotIn("limit", fixture_id)
+
+
 class DeterminismTests(unittest.TestCase):
     """The fixtures must not depend on state that changes between runs."""
 

@@ -1,0 +1,13 @@
+{
+  "verificationVersion": 1,
+  "fixtureId": "p28-xdr-operation-account_merge",
+  "fixtureSha256": "cf834991689d946a61b0170e1e6f305af99c732185070488264010f81d7a111f",
+  "method": "structural",
+  "checkedAt": "2026-11-20T15:02:34Z",
+  "verifier": {
+    "name": "protocolcanary-fixtures-validate",
+    "version": "869fb8e63aa6d200dcb85afdcb681a5f2af4551f"
+  },
+  "outcome": "matched",
+  "evidenceRef": null
+}

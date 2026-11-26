@@ -1,0 +1,1 @@
+- Add Protocol 28 TTL LedgerEntry fixtures covering unsigned liveUntilLedgerSeq boundaries at 0 and uint32 maximum.

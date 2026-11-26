@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pack_support as support  # noqa: E402
@@ -224,6 +225,67 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob("nope*.json")))
 
 
+class MissingDigestTests(unittest.TestCase):
+    """A release manifest is incomplete without both cryptographic digests.
+
+    ``packDigest`` identifies the fixture content the archive carries and
+    ``archive.sha256`` identifies the published archive bytes; neither may be
+    omitted, and neither may be present in a malformed form.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        support.write_pack(self.root)
+        info = pack.build_archive(self.root / "pack", self.root / "out", "1.4.2")
+        self.document = manifest.build_manifest(
+            info.path, revision=support.REVISION, engines=["0.2.0"]
+        )
+
+    def copy(self) -> dict:
+        return json.loads(json.dumps(self.document))
+
+    def test_a_complete_manifest_passes_schema_validation(self) -> None:
+        self.assertEqual(schema_problems(self.copy()), [])
+
+    def test_a_missing_pack_digest_is_rejected_descriptively(self) -> None:
+        document = self.copy()
+        del document["packDigest"]
+        problems = schema_problems(document)
+        self.assertTrue(problems)
+        self.assertTrue(
+            any("missing required property 'packDigest'" in problem for problem in problems),
+            problems,
+        )
+
+    def test_a_missing_archive_sha256_is_rejected_descriptively(self) -> None:
+        document = self.copy()
+        del document["archive"]["sha256"]
+        problems = schema_problems(document)
+        self.assertTrue(problems)
+        self.assertTrue(
+            any("missing required property 'sha256'" in problem for problem in problems),
+            problems,
+        )
+
+    def test_an_empty_pack_digest_is_rejected(self) -> None:
+        document = self.copy()
+        document["packDigest"] = ""
+        problems = schema_problems(document)
+        self.assertTrue(problems)
+        self.assertTrue(any("packDigest" in problem for problem in problems), problems)
+
+    def test_a_malformed_archive_sha256_is_rejected(self) -> None:
+        document = self.copy()
+        document["archive"]["sha256"] = "not-a-digest"
+        problems = schema_problems(document)
+        self.assertTrue(problems)
+        self.assertTrue(
+            any("archive.sha256" in problem for problem in problems), problems
+        )
+
+
 class HostileRegistryArchiveTests(unittest.TestCase):
     """Archives whose registry.json is present but unusable (F-061 gaps)."""
 
@@ -269,6 +331,42 @@ class HostileRegistryArchiveTests(unittest.TestCase):
         blob.write_bytes(raw.getvalue())
         with self.assertRaisesRegex(manifest.ManifestError, "far larger"):
             self.build(blob)
+
+    def test_an_archive_over_the_byte_cap_is_refused_before_being_read(self) -> None:
+        """The on-disk size is checked before ``read_bytes`` (issue #570)."""
+        support.write_pack(self.root)
+        info = pack.build_archive(self.root / "pack", self.root / "out", "1.0.0")
+        with mock.patch.object(manifest, "_MAX_ARCHIVE_BYTES", 100):
+            with mock.patch.object(Path, "read_bytes") as read_bytes:
+                with self.assertRaisesRegex(manifest.ManifestError, "archive limit"):
+                    self.build(info.path)
+        read_bytes.assert_not_called()
+
+    def test_an_archive_with_a_duplicate_member_is_refused(self) -> None:
+        path = support.tar_gz(
+            [
+                support.entry("xdr/a.toml", support.A_TOML),
+                support.entry("xdr/a.toml", support.A_TOML),
+            ],
+            self.root / "protocolcanary-fixtures-1.0.0.tar.gz",
+        )
+        with self.assertRaisesRegex(manifest.ManifestError, "duplicate member name"):
+            self.build(path)
+
+    def test_a_registry_version_other_than_one_is_refused(self) -> None:
+        registry = self.golden_registry()
+        registry["registryVersion"] = 2
+        with self.assertRaisesRegex(manifest.ManifestError, "registryVersion 1"):
+            self.build(self.archive_with_registry(json.dumps(registry).encode("utf-8")))
+
+    def test_a_negative_protocol_is_refused(self) -> None:
+        registry = self.golden_registry()
+        registry["protocol"] = -1
+        with self.assertRaisesRegex(manifest.ManifestError, "non-negative"):
+            self.build(self.archive_with_registry(json.dumps(registry).encode("utf-8")))
+
+    def test_manifest_errors_are_value_errors(self) -> None:
+        self.assertTrue(issubclass(manifest.ManifestError, ValueError))
 
     def test_an_explicit_version_must_be_exact(self) -> None:
         support.write_pack(self.root)
